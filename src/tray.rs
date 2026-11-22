@@ -241,6 +241,20 @@ mod tests {
     }
 
     #[test]
+    fn render_does_not_leak_gdi() {
+        use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetGuiResources, GR_GDIOBJECTS, GR_USEROBJECTS};
+        let count = || unsafe { GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS) + GetGuiResources(GetCurrentProcess(), GR_USEROBJECTS) };
+        unsafe { DestroyIcon(render(50, 0xFFFFFF)) }; // warm up caches
+        let before = count();
+        for p in 0..=100 {
+            let icon = render(p, 0xFFFFFF);
+            assert!(!icon.is_null());
+            unsafe { DestroyIcon(icon) };
+        }
+        assert!(count() <= before + 2, "GDI/USER objects grew: {before} -> {}", count());
+    }
+
+    #[test]
     fn uid_is_stable() {
         assert_eq!(uid("ss:12e0"), uid("ss:12e0"));
         assert_ne!(uid("ss:12e0"), uid("logi:c547:01"));
