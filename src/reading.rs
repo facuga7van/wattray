@@ -5,6 +5,8 @@ pub struct Reading {
     pub name: String,
     pub percent: u8,
     pub charging: bool,
+    /// Paired but asleep: no fresh value, keep showing the last one.
+    pub asleep: bool,
 }
 
 /// Maps a raw device value in `min..=max` to 0..=100, rounded and clamped.

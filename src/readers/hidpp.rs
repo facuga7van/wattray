@@ -26,21 +26,25 @@ pub fn read(out: &mut Vec<Reading>) {
         }
         let Some(dev) = Dev::open(info) else { continue };
         let short = all.iter().find(|s| s.pid == info.pid && s.mi == info.mi && s.usage_page == 0xFF00 && s.output_len == 7);
-        for idx in short.and_then(receiver_slots).unwrap_or_else(|| vec![0xFF]) {
+        let (online, asleep) = short.and_then(receiver_slots).unwrap_or_else(|| (vec![0xFF], vec![]));
+        for idx in online {
             if let Some(r) = read_device(&dev, info.pid, idx) {
                 out.push(r);
             }
+        }
+        for idx in asleep {
+            out.push(Reading { id: id(info.pid, idx), name: String::new(), percent: 0, charging: false, asleep: true });
         }
     }
 }
 
 /// Asks a receiver (HID++ 1.0, short collection) to announce its devices: writing register 0x02
 /// with 0x02 makes it send a 0x41 "device connection" notification per paired slot.
-/// Returns the slots whose link is up, or None if this is not a receiver.
-fn receiver_slots(short: &HidInfo) -> Option<Vec<u8>> {
+/// Returns (slots with link up, paired slots asleep), or None if this is not a receiver.
+fn receiver_slots(short: &HidInfo) -> Option<(Vec<u8>, Vec<u8>)> {
     let dev = Dev::open(short)?;
     dev.write(&[0x10, 0xFF, 0x80, 0x02, 0x02, 0, 0]);
-    let mut slots = Vec::new();
+    let (mut online, mut asleep) = (Vec::new(), Vec::new());
     let mut acked = false;
     let mut deadline = Instant::now() + Duration::from_millis(300);
     while let Some(left) = deadline.checked_duration_since(Instant::now()) {
@@ -50,21 +54,28 @@ fn receiver_slots(short: &HidInfo) -> Option<Vec<u8>> {
                 acked = true;
                 deadline = deadline.min(Instant::now() + Duration::from_millis(50)); // stragglers
             }
-            [0x10, idx @ 1..=6, 0x41, _, flags, ..] if flags & 0x40 == 0 && !slots.contains(idx) => slots.push(*idx),
+            [0x10, idx @ 1..=6, 0x41, _, flags, ..] if !online.contains(idx) && !asleep.contains(idx) => {
+                if flags & 0x40 == 0 { online.push(*idx) } else { asleep.push(*idx) }
+            }
             _ => {}
         }
     }
-    acked.then_some(slots)
+    acked.then_some((online, asleep))
 }
 
 fn read_device(dev: &Dev, pid: u16, idx: u8) -> Option<Reading> {
     let (percent, charging) = battery(dev, idx)?;
     Some(Reading {
-        id: format!("logi:{pid:04x}:{idx:02x}"),
+        id: id(pid, idx),
         name: name(dev, idx).unwrap_or_else(|| "Logitech".into()),
         percent,
         charging,
+        asleep: false,
     })
+}
+
+fn id(pid: u16, idx: u8) -> String {
+    format!("logi:{pid:04x}:{idx:02x}")
 }
 
 fn battery(dev: &Dev, idx: u8) -> Option<(u8, bool)> {

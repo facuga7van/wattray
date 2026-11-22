@@ -55,7 +55,7 @@ unsafe fn read_enum(enumerator: &str, out: &mut Vec<Reading>) {
                     String::from_utf16_lossy(&w).trim_end_matches('\0').to_string()
                 })
                 .unwrap_or_else(|| "Bluetooth".into());
-            out.push(Reading { id: format!("bt:{id}"), name, percent: b[0].min(100), charging: false });
+            out.push(Reading { id: format!("bt:{id}"), name, percent: b[0].min(100), charging: false, asleep: false });
         }
         SetupDiDestroyDeviceInfoList(set);
     }

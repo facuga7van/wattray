@@ -12,6 +12,7 @@ features = [
   "Win32_Devices_DeviceAndDriverInstallation",
   "Win32_Devices_HumanInterfaceDevice",
   "Win32_Devices_Properties",
+  "Win32_Globalization",
   "Win32_Graphics_Gdi",
   "Win32_Security",
   "Win32_Storage_FileSystem",

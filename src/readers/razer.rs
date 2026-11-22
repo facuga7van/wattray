@@ -27,6 +27,7 @@ pub fn read(out: &mut Vec<Reading>) {
             name: if name.is_empty() { "Razer".into() } else { name.into() },
             percent: scale(raw, 0, 255),
             charging,
+            asleep: false,
         });
     }
 }

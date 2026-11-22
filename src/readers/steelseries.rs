@@ -59,7 +59,7 @@ pub fn read(out: &mut Vec<Reading>) {
         let Some(r) = Dev::open(&info).and_then(|d| query(&d, m.req)) else { continue };
         done.push(info.pid);
         if let Some((percent, charging)) = decode(m, &r) {
-            out.push(Reading { id: format!("ss:{:04x}", info.pid), name: m.name.into(), percent, charging });
+            out.push(Reading { id: format!("ss:{:04x}", info.pid), name: m.name.into(), percent, charging, asleep: false });
         }
     }
 }

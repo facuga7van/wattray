@@ -23,7 +23,6 @@ pub fn dump(tag: &str, b: &[u8]) {
 #[derive(Debug)]
 pub struct HidInfo {
     pub path: Vec<u16>,
-    pub vid: u16,
     pub pid: u16,
     pub mi: Option<u8>,
     pub usage_page: u16,
@@ -106,7 +105,6 @@ unsafe fn probe(path: Vec<u16>, lower: &str) -> Option<HidInfo> {
         let mi = lower.find("&mi_").and_then(|k| u8::from_str_radix(lower.get(k + 4..k + 6)?, 16).ok());
         Some(HidInfo {
             path,
-            vid: attr.VendorID,
             pid: attr.ProductID,
             mi,
             usage_page: caps.UsagePage,
