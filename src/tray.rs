@@ -257,32 +257,35 @@ fn render(r: &Reading, light: bool) -> HICON {
     }
 }
 
-// Hand-made 16 px art. Rows top to bottom, most significant used bit = leftmost pixel.
+// Hand-made 16 px art, using the full height the tray gives us (10 of 16 rows; the rest is
+// Explorer's own padding look). Rows top to bottom, most significant used bit = leftmost pixel.
+const ART_H: i32 = 10;
+
 #[rustfmt::skip]
-const DIGITS: [[u8; 7]; 11] = [
-    [0b0110, 0b1001, 0b1001, 0b1001, 0b1001, 0b1001, 0b0110], // 0
-    [0b0010, 0b0110, 0b0010, 0b0010, 0b0010, 0b0010, 0b0111], // 1
-    [0b0110, 0b1001, 0b0001, 0b0010, 0b0100, 0b1000, 0b1111], // 2
-    [0b1110, 0b0001, 0b0001, 0b0110, 0b0001, 0b0001, 0b1110], // 3
-    [0b1001, 0b1001, 0b1001, 0b1111, 0b0001, 0b0001, 0b0001], // 4
-    [0b1111, 0b1000, 0b1000, 0b1110, 0b0001, 0b0001, 0b1110], // 5
-    [0b0110, 0b1000, 0b1000, 0b1110, 0b1001, 0b1001, 0b0110], // 6
-    [0b1111, 0b0001, 0b0010, 0b0010, 0b0100, 0b0100, 0b0100], // 7
-    [0b0110, 0b1001, 0b1001, 0b0110, 0b1001, 0b1001, 0b0110], // 8
-    [0b0110, 0b1001, 0b1001, 0b0111, 0b0001, 0b0001, 0b0110], // 9
-    [0b1111, 0b1000, 0b1000, 0b1110, 0b1000, 0b1000, 0b1000], // F
+const DIGITS: [[u8; 10]; 11] = [
+    [0b0110, 0b1001, 0b1001, 0b1001, 0b1001, 0b1001, 0b1001, 0b1001, 0b1001, 0b0110], // 0
+    [0b0010, 0b0110, 0b1010, 0b0010, 0b0010, 0b0010, 0b0010, 0b0010, 0b0010, 0b0111], // 1
+    [0b0110, 0b1001, 0b0001, 0b0001, 0b0010, 0b0010, 0b0100, 0b1000, 0b1000, 0b1111], // 2
+    [0b1110, 0b0001, 0b0001, 0b0001, 0b0110, 0b0001, 0b0001, 0b0001, 0b0001, 0b1110], // 3
+    [0b1001, 0b1001, 0b1001, 0b1001, 0b1111, 0b0001, 0b0001, 0b0001, 0b0001, 0b0001], // 4
+    [0b1111, 0b1000, 0b1000, 0b1000, 0b1110, 0b0001, 0b0001, 0b0001, 0b0001, 0b1110], // 5
+    [0b0110, 0b1000, 0b1000, 0b1000, 0b1110, 0b1001, 0b1001, 0b1001, 0b1001, 0b0110], // 6
+    [0b1111, 0b0001, 0b0001, 0b0010, 0b0010, 0b0010, 0b0100, 0b0100, 0b0100, 0b0100], // 7
+    [0b0110, 0b1001, 0b1001, 0b1001, 0b0110, 0b1001, 0b1001, 0b1001, 0b1001, 0b0110], // 8
+    [0b0110, 0b1001, 0b1001, 0b1001, 0b1001, 0b0111, 0b0001, 0b0001, 0b0001, 0b0110], // 9
+    [0b1111, 0b1000, 0b1000, 0b1000, 0b1110, 0b1000, 0b1000, 0b1000, 0b1000, 0b1000], // F
 ];
 
-/// (width, rows) of each device glyph, 7 rows tall like the digits.
+/// (width, rows) of each device glyph, at most ART_H rows; centered vertically.
 #[rustfmt::skip]
-fn glyph_art(kind: Kind) -> (i32, [u8; 7]) {
+fn glyph_art(kind: Kind) -> (i32, &'static [u8]) {
     match kind {
-        Kind::Headset => (6, [0b011110, 0b100001, 0b100001, 0b100001, 0b110011, 0b110011, 0b110011]),
-        Kind::Mouse => (5, [0b00100, 0b01110, 0b10101, 0b11111, 0b10001, 0b10001, 0b01110]), // cable + buttons
-        Kind::Keyboard => (6, [0b000000, 0b111111, 0b101011, 0b110101, 0b100001, 0b111111, 0b000000]),
-        Kind::Gamepad => (6, [0b000000, 0b011110, 0b101101, 0b111111, 0b110011, 0b100001, 0b000000]),
-        Kind::Speaker => (6, [0b000100, 0b001100, 0b111101, 0b111101, 0b111101, 0b001100, 0b000100]),
-        Kind::Other => (5, [0b00100, 0b00110, 0b10101, 0b01110, 0b10101, 0b00110, 0b00100]), // Bluetooth
+        Kind::Headset => (6, &[0b011110, 0b100001, 0b100001, 0b100001, 0b100001, 0b100001, 0b110011, 0b110011, 0b110011, 0b110011]),
+        Kind::Mouse => (5, &[0b00100, 0b00100, 0b01110, 0b10101, 0b10101, 0b11111, 0b10001, 0b10001, 0b10001, 0b01110]), // cable + buttons
+        Kind::Keyboard => (6, &[0b111111, 0b101011, 0b110101, 0b101011, 0b100001, 0b111111]),
+        Kind::Gamepad => (6, &[0b011110, 0b101101, 0b111111, 0b110011, 0b100001]),
+        Kind::Speaker => (6, &[0b000100, 0b001100, 0b111100, 0b111101, 0b111101, 0b111100, 0b001100, 0b000100]),
+        Kind::Other => (5, &[0b00100, 0b00110, 0b10101, 0b01110, 0b00100, 0b01110, 0b10101, 0b00110, 0b00100]), // Bluetooth
     }
 }
 
@@ -290,23 +293,24 @@ fn glyph_art(kind: Kind) -> (i32, [u8; 7]) {
 fn pixel_art(r: &Reading, light: bool, s: i32) -> Vec<u32> {
     let mut px = vec![0u32; (s * s) as usize];
     let pad = (s - 16) / 2;
-    let mut put = |x0: i32, rows: &[u8; 7], w: i32, c: u32| {
+    let top = (16 - ART_H) / 2;
+    let mut put = |x0: i32, y0: i32, rows: &[u8], w: i32, c: u32| {
         for (y, bits) in rows.iter().enumerate() {
             for x in 0..w {
                 if bits >> (w - 1 - x) & 1 == 1 {
-                    px[((pad + 4 + y as i32) * s + pad + x0 + x) as usize] = 0xFF00_0000 | c;
+                    px[((pad + y0 + y as i32) * s + pad + x0 + x) as usize] = 0xFF00_0000 | c;
                 }
             }
         }
     };
     let (gw, g) = glyph_art(r.kind);
-    put((6 - gw) / 2, &g, gw, color(100, false, light));
+    put((6 - gw) / 2, top + (ART_H - g.len() as i32) / 2, g, gw, color(100, false, light));
     let text = label(r.percent);
     let c = color(r.percent, r.charging, light);
     let mut x = 16 - (text.len() as i32 * 5 - 1);
     for ch in text.chars() {
         let d = ch.to_digit(10).map_or(10, |d| d as usize);
-        put(x, &DIGITS[d], 4, c);
+        put(x, top, &DIGITS[d], 4, c);
         x += 5;
     }
     px
