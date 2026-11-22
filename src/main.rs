@@ -28,13 +28,17 @@ use tray::{Tray, WM_TRAY};
 
 const WM_READINGS: u32 = WM_APP;
 const POLL: Duration = Duration::from_secs(120);
+/// While a device sleeps, look again sooner so it shows up soon after it wakes.
+const POLL_ASLEEP: Duration = Duration::from_secs(20);
 const RESCAN_TIMER: usize = 1;
+const PROMOTE_TIMER: usize = 2;
 const CMD_EXIT: usize = 1;
 
 struct App {
     tray: Tray,
     worker: Thread,
     taskbar_created: u32,
+    promote_tries: u32,
 }
 
 thread_local! {
@@ -62,7 +66,8 @@ fn main() {
     }
     unsafe {
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-        CreateMutexW(null(), 0, w("Local\\pila").as_ptr());
+        let name = w("Local\\pila"); // must outlive the call: GetLastError is read right after
+        CreateMutexW(null(), 0, name.as_ptr());
         if GetLastError() == ERROR_ALREADY_EXISTS {
             return;
         }
@@ -81,17 +86,20 @@ fn main() {
 
         let target = hwnd as usize; // HWND is not Send; the handle value is
         let worker = thread::spawn(move || loop {
-            let batch = Box::into_raw(Box::new(readers::read_all()));
+            let readings = readers::read_all();
+            let wait = if readings.iter().any(|r| r.asleep) { POLL_ASLEEP } else { POLL };
+            let batch = Box::into_raw(Box::new(readings));
             if PostMessageW(target as HWND, WM_READINGS, 0, batch as LPARAM) == 0 {
                 drop(Box::from_raw(batch));
             }
-            thread::park_timeout(POLL); // unpark() = rescan now
+            thread::park_timeout(wait); // unpark() = rescan now
         });
         APP.with(|a| {
             *a.borrow_mut() = Some(App {
                 tray: Tray::new(hwnd),
                 worker: worker.thread().clone(),
                 taskbar_created: RegisterWindowMessageW(w("TaskbarCreated").as_ptr()),
+                promote_tries: 0,
             })
         });
 
@@ -139,8 +147,18 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
         match msg {
             WM_READINGS => {
                 let batch = lp as *mut Vec<Reading>;
-                if with_app(|a| a.tray.update(*Box::from_raw(batch))).is_none() {
-                    PostMessageW(hwnd, msg, wp, lp); // state busy: retry after the modal loop
+                match with_app(|a| {
+                    a.tray.update(*Box::from_raw(batch));
+                    a.promote_tries = 0;
+                    a.tray.unsettled()
+                }) {
+                    None => {
+                        PostMessageW(hwnd, msg, wp, lp); // state busy: retry after the modal loop
+                    }
+                    Some(true) => {
+                        SetTimer(hwnd, PROMOTE_TIMER, 1000, None); // shell registers new icons lazily
+                    }
+                    Some(false) => {}
                 }
             }
             WM_TRAY => match (lp & 0xFFFF) as u32 {
@@ -150,6 +168,16 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
             },
             WM_DEVICECHANGE => {
                 SetTimer(hwnd, RESCAN_TIMER, 2000, None); // debounce bursts of device events
+            }
+            WM_TIMER if wp == PROMOTE_TIMER => {
+                let again = with_app(|a| {
+                    a.tray.promote();
+                    a.promote_tries += 1;
+                    a.tray.unsettled() && a.promote_tries < 30
+                });
+                if again != Some(true) {
+                    KillTimer(hwnd, PROMOTE_TIMER);
+                }
             }
             WM_TIMER if wp == RESCAN_TIMER => {
                 KillTimer(hwnd, RESCAN_TIMER);

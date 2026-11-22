@@ -5,7 +5,7 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use crate::hid::{self, Dev};
-use crate::reading::{scale, Reading};
+use crate::reading::{scale, Kind, Reading};
 
 const TIDS: [u8; 4] = [0x1F, 0x3F, 0xFF, 0x9F]; // transaction ids used by different generations
 const OK: u8 = 0x02;
@@ -20,6 +20,9 @@ pub fn read(out: &mut Vec<Reading>) {
         let Some(dev) = Dev::open(&info) else { continue };
         let Some((tid, raw)) = TIDS.iter().find_map(|&t| Some((t, command(&dev, t, 0x80)?))) else { continue };
         done.push(info.pid);
+        if raw == 0 {
+            continue; // asleep/off devices (and wired ones) answer OK with 0: not a real reading
+        }
         let charging = command(&dev, tid, 0x84).is_some_and(|v| v == 1);
         let name = info.product.trim_end_matches(" Dongle").trim();
         out.push(Reading {
@@ -27,6 +30,10 @@ pub fn read(out: &mut Vec<Reading>) {
             name: if name.is_empty() { "Razer".into() } else { name.into() },
             percent: scale(raw, 0, 255),
             charging,
+            kind: match Kind::guess(name) {
+                Kind::Other => Kind::Mouse, // most Razer battery devices are mice
+                k => k,
+            },
             asleep: false,
         });
     }

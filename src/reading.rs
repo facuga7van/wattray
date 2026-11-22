@@ -1,3 +1,35 @@
+/// What the device is; picks the glyph icon shown next to the number.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Kind {
+    Headset,
+    Mouse,
+    Keyboard,
+    Gamepad,
+    Speaker,
+    Other,
+}
+
+impl Kind {
+    /// Best guess from free text (product names, Windows device categories).
+    pub fn guess(text: &str) -> Kind {
+        let t = text.to_ascii_lowercase();
+        let has = |words: &[&str]| words.iter().any(|w| t.contains(w));
+        if has(&["mouse", "viper", "deathadder", "basilisk", "orochi", "naga", "cobra", "mamba", "trackball"]) {
+            Kind::Mouse
+        } else if has(&["keyboard", "blackwidow", "huntsman", "ornata", "deathstalker", "keypad"]) {
+            Kind::Keyboard
+        } else if has(&["gamepad", "gaming", "controller", "joystick", "wolverine"]) {
+            Kind::Gamepad
+        } else if has(&["headset", "headphone", "earbud", "kraken", "blackshark", "barracuda", "nari"]) {
+            Kind::Headset
+        } else if has(&["speaker"]) {
+            Kind::Speaker
+        } else {
+            Kind::Other
+        }
+    }
+}
+
 /// One battery reading. `id` is stable across polls and identifies the tray icon.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Reading {
@@ -5,6 +37,7 @@ pub struct Reading {
     pub name: String,
     pub percent: u8,
     pub charging: bool,
+    pub kind: Kind,
     /// Paired but asleep: no fresh value, keep showing the last one.
     pub asleep: bool,
 }
@@ -63,6 +96,16 @@ mod tests {
         assert_eq!(volt_to_pct(3835), 55);
         assert_eq!(volt_to_pct(3500), 0);
         assert_eq!(volt_to_pct(3000), 0);
+    }
+
+    #[test]
+    fn kind_guess() {
+        assert_eq!(Kind::guess("Input.Mouse"), Kind::Mouse);
+        assert_eq!(Kind::guess("Input.Gaming.Gamepad"), Kind::Gamepad);
+        assert_eq!(Kind::guess("Communication.Headset.Bluetooth"), Kind::Headset);
+        assert_eq!(Kind::guess("Razer Viper V2 Pro"), Kind::Mouse);
+        assert_eq!(Kind::guess("Input.Keyboard"), Kind::Keyboard);
+        assert_eq!(Kind::guess("Thing"), Kind::Other);
     }
 
     #[test]

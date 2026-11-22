@@ -1,13 +1,13 @@
 # pila
 
-Battery level of your wireless peripherals, in the Windows tray. One icon per device, the number drawn inside.
+Battery level of your wireless peripherals, in the Windows tray. One icon per device: what it is on the left (headset, mouse, keyboard, gamepad, speaker), the percentage on the right.
 
-- ~280 KB single `.exe`, no installer, no runtime, ~2 MB of private memory.
+- ~290 KB single `.exe`, no installer, no runtime, ~2 MB of private memory.
 - Polls every 2 minutes and right away when a device is plugged or unplugged. Idle the rest of the time.
 - Starts with Windows (disable it in Task Manager → Startup apps).
 - Hover an icon for the device name. Left click: refresh now. Right click: Exit.
 
-Colors: white (black on a light taskbar), amber at 20 % or less, red at 10 % or less. `F` means full.
+Colors: white (black on a light taskbar), amber at 20 % or less, red at 10 % or less. `F` means full. At 100–125 % display scaling the icon is hand-drawn pixel art, so it stays sharp at 16 px.
 
 ## Supported devices
 
@@ -20,13 +20,13 @@ Colors: white (black on a light taskbar), amber at 20 % or less, red at 10 % or 
 
 Corsair, HyperX and generic 2.4 GHz dongles are not supported yet. Protocol details come from [HeadsetControl](https://github.com/Sapd/HeadsetControl), [Solaar](https://github.com/pwr-Solaar/Solaar) and [OpenRazer](https://github.com/openrazer/openrazer).
 
-A Logitech device that is paired but asleep keeps showing its last value.
+A Logitech device that is paired but asleep keeps showing its last value, and pila checks every 20 s until it wakes.
 
 ## Install
 
 1. Download `pila.exe` from [Releases](https://github.com/facuga7van/pila/releases) and put it somewhere permanent, e.g. `%LOCALAPPDATA%\Programs\pila\`.
 2. Run it. The exe is not code-signed, so SmartScreen may warn the first time: *More info → Run anyway*.
-3. Windows 11 hides new tray icons behind `^`. To keep them on the taskbar: Settings → Personalization → Taskbar → Other system tray icons → turn on **pila**, or drag the icons out.
+3. pila puts its icons on the taskbar the first time each device shows up (Windows 11 would hide them behind `^`). Drag one into `^`, or switch it off in Settings → Personalization → Taskbar → Other system tray icons, and Windows remembers: pila never overrides that.
 
 To uninstall: right click → Exit, delete the exe, and remove `pila` from Task Manager → Startup apps.
 

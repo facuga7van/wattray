@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use std::sync::atomic::{AtomicU8, Ordering};
 
 use crate::hid::{self, Dev, HidInfo};
-use crate::reading::{volt_to_pct, Reading};
+use crate::reading::{volt_to_pct, Kind, Reading};
 
 static SW: AtomicU8 = AtomicU8::new(0);
 // Generous: a sleeping link takes ~0.8 s to answer its first request. Only online devices get asked.
@@ -26,22 +26,41 @@ pub fn read(out: &mut Vec<Reading>) {
         }
         let Some(dev) = Dev::open(info) else { continue };
         let short = all.iter().find(|s| s.pid == info.pid && s.mi == info.mi && s.usage_page == 0xFF00 && s.output_len == 7);
-        let (online, asleep) = short.and_then(receiver_slots).unwrap_or_else(|| (vec![0xFF], vec![]));
+        let (online, asleep) = match short.map(|s| receiver_slots(s).or_else(|| receiver_slots(s))) {
+            None | Some(Some(Probe::Direct)) => (vec![0xFF], vec![]), // direct device
+            Some(Some(Probe::Receiver(on, off))) => (on, off),
+            Some(None) => {
+                // Receiver did not answer twice: keep whatever we showed for it, re-check next poll.
+                out.push(asleep_reading(format!("logi:{:04x}:*", info.pid)));
+                continue;
+            }
+        };
         for idx in online {
             if let Some(r) = read_device(&dev, info.pid, idx) {
                 out.push(r);
             }
         }
         for idx in asleep {
-            out.push(Reading { id: id(info.pid, idx), name: String::new(), percent: 0, charging: false, asleep: true });
+            out.push(asleep_reading(id(info.pid, idx)));
         }
     }
 }
 
 /// Asks a receiver (HID++ 1.0, short collection) to announce its devices: writing register 0x02
 /// with 0x02 makes it send a 0x41 "device connection" notification per paired slot.
-/// Returns (slots with link up, paired slots asleep), or None if this is not a receiver.
-fn receiver_slots(short: &HidInfo) -> Option<(Vec<u8>, Vec<u8>)> {
+fn asleep_reading(id: String) -> Reading {
+    Reading { id, name: String::new(), percent: 0, charging: false, kind: Kind::Other, asleep: true }
+}
+
+enum Probe {
+    /// (slots with link up, paired slots asleep)
+    Receiver(Vec<u8>, Vec<u8>),
+    /// A HID++ 2.0 device that rejected the 1.0 register request.
+    Direct,
+}
+
+/// None if nothing answered in time.
+fn receiver_slots(short: &HidInfo) -> Option<Probe> {
     let dev = Dev::open(short)?;
     dev.write(&[0x10, 0xFF, 0x80, 0x02, 0x02, 0, 0]);
     let (mut online, mut asleep) = (Vec::new(), Vec::new());
@@ -50,6 +69,7 @@ fn receiver_slots(short: &HidInfo) -> Option<(Vec<u8>, Vec<u8>)> {
     while let Some(left) = deadline.checked_duration_since(Instant::now()) {
         let Some(r) = dev.read(left.as_millis().max(1) as u32) else { break };
         match r.as_slice() {
+            [0x10, 0xFF, 0x8F, 0x80, 0x02, ..] => return Some(Probe::Direct),
             [0x10, 0xFF, 0x80, 0x02, ..] => {
                 acked = true;
                 deadline = deadline.min(Instant::now() + Duration::from_millis(50)); // stragglers
@@ -60,18 +80,13 @@ fn receiver_slots(short: &HidInfo) -> Option<(Vec<u8>, Vec<u8>)> {
             _ => {}
         }
     }
-    acked.then_some((online, asleep))
+    acked.then_some(Probe::Receiver(online, asleep))
 }
 
 fn read_device(dev: &Dev, pid: u16, idx: u8) -> Option<Reading> {
     let (percent, charging) = battery(dev, idx)?;
-    Some(Reading {
-        id: id(pid, idx),
-        name: name(dev, idx).unwrap_or_else(|| "Logitech".into()),
-        percent,
-        charging,
-        asleep: false,
-    })
+    let (name, kind) = describe(dev, idx).unwrap_or_else(|| ("Logitech".into(), Kind::Other));
+    Some(Reading { id: id(pid, idx), name, percent, charging, kind, asleep: false })
 }
 
 fn id(pid: u16, idx: u8) -> String {
@@ -92,8 +107,17 @@ fn battery(dev: &Dev, idx: u8) -> Option<(u8, bool)> {
     Some((volt_to_pct(u16::from_be_bytes([p[0], p[1]])), p[2] & 0x80 != 0))
 }
 
-fn name(dev: &Dev, idx: u8) -> Option<String> {
+/// Name and type via feature 0x0005 (Device Name & Type).
+fn describe(dev: &Dev, idx: u8) -> Option<(String, Kind)> {
     let f = feature(dev, idx, 0x0005)?;
+    let kind = call(dev, idx, f, 2, &[]).map_or(Kind::Other, |p| match p[0] {
+        0 | 2 => Kind::Keyboard,
+        3..=5 => Kind::Mouse,
+        8 => Kind::Headset,
+        11 | 12 => Kind::Gamepad,
+        14 => Kind::Speaker,
+        _ => Kind::Other,
+    });
     let len = call(dev, idx, f, 0, &[])?[0] as usize;
     let mut bytes = Vec::with_capacity(len);
     while bytes.len() < len {
@@ -102,7 +126,7 @@ fn name(dev: &Dev, idx: u8) -> Option<String> {
         bytes.extend_from_slice(&p[..take]);
     }
     let s = String::from_utf8_lossy(&bytes).trim_end_matches('\0').trim().to_string();
-    (!s.is_empty()).then_some(s)
+    (!s.is_empty()).then_some((s, kind))
 }
 
 /// Feature index for `id`, or None if the device lacks it.

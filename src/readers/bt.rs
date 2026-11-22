@@ -6,11 +6,12 @@ use windows_sys::core::GUID;
 use windows_sys::Win32::Devices::DeviceAndDriverInstallation::*;
 use windows_sys::Win32::Foundation::{DEVPROPKEY, INVALID_HANDLE_VALUE};
 
-use crate::reading::Reading;
+use crate::reading::{Kind, Reading};
 
 const BATTERY: DEVPROPKEY = key(0x104EA319_6EE2_4701_BD47_8DDBF425BBE5, 2);
 const CONNECTED: DEVPROPKEY = key(0x83DA6326_97A6_4088_9453_A1923F573B29, 15);
 const FRIENDLY_NAME: DEVPROPKEY = key(0xA45C254E_DF1C_4EFD_8020_67D146A850E0, 14);
+const CATEGORY: DEVPROPKEY = key(0x78C34FC8_104A_4ACA_9EA4_524D52996E57, 90); // e.g. "Input.Mouse"
 
 const fn key(fmtid: u128, pid: u32) -> DEVPROPKEY {
     DEVPROPKEY { fmtid: GUID::from_u128(fmtid), pid }
@@ -49,16 +50,18 @@ unsafe fn read_enum(enumerator: &str, out: &mut Vec<Reading>) {
             if c.first() != Some(&0xFF) || b.is_empty() {
                 continue; // DEVPROP_BOOLEAN true is 0xFF; disconnected devices keep a stale level
             }
-            let name = prop(set, &dev, &FRIENDLY_NAME)
-                .map(|n| {
-                    let w: Vec<u16> = n.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
-                    String::from_utf16_lossy(&w).trim_end_matches('\0').to_string()
-                })
-                .unwrap_or_else(|| "Bluetooth".into());
-            out.push(Reading { id: format!("bt:{id}"), name, percent: b[0].min(100), charging: false, asleep: false });
+            let name = prop(set, &dev, &FRIENDLY_NAME).map(|n| utf16(&n)).unwrap_or_else(|| "Bluetooth".into());
+            let kind = Kind::guess(&prop(set, &dev, &CATEGORY).map(|c| utf16(&c)).unwrap_or_default());
+            out.push(Reading { id: format!("bt:{id}"), name, percent: b[0].min(100), charging: false, kind, asleep: false });
         }
         SetupDiDestroyDeviceInfoList(set);
     }
+}
+
+/// UTF-16 string or string list property -> text (list items joined with spaces).
+fn utf16(b: &[u8]) -> String {
+    let w: Vec<u16> = b.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+    String::from_utf16_lossy(&w).trim_end_matches('\0').replace('\0', " ")
 }
 
 unsafe fn prop(set: HDEVINFO, dev: &SP_DEVINFO_DATA, key: &DEVPROPKEY) -> Option<Vec<u8>> {

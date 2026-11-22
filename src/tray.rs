@@ -1,4 +1,5 @@
-//! Tray icons: one per reading, battery number drawn with GDI into a 32-bpp alpha icon.
+//! Tray icons: one per device, a glyph (what it is) on the left and the battery number on the
+//! right, drawn with GDI into a 32-bpp alpha icon.
 
 use std::ptr::null_mut;
 
@@ -9,54 +10,97 @@ use windows_sys::Win32::UI::HiDpi::*;
 use windows_sys::Win32::UI::Shell::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
-use crate::reading::{label, Reading};
+use crate::reading::{label, Kind, Reading};
 
 pub const WM_TRAY: u32 = WM_APP + 1;
 
 pub struct Tray {
     hwnd: HWND,
     shown: Vec<Reading>,
+    /// Icon ids whose taskbar visibility is settled (promoted by us, or chosen by the user).
+    settled: Vec<u32>,
 }
 
 impl Tray {
     pub fn new(hwnd: HWND) -> Tray {
-        Tray { hwnd, shown: Vec::new() }
+        Tray { hwnd, shown: Vec::new(), settled: Vec::new() }
     }
 
     /// Diff by id: add new devices, drop gone ones, redraw only changed ones.
+    /// A device whose icons the shell refused is not remembered, so the next poll retries it.
     pub fn update(&mut self, new: Vec<Reading>) {
         let new = merge(&self.shown, new);
         for old in &self.shown {
             if !new.iter().any(|r| r.id == old.id) {
-                self.notify(NIM_DELETE, old);
+                self.set(NIM_DELETE, old);
             }
         }
-        for r in &new {
-            match self.shown.iter().find(|o| o.id == r.id) {
-                Some(o) if o == r => {}
-                Some(_) => self.notify(NIM_MODIFY, r),
-                None => self.notify(NIM_ADD, r),
+        let mut kept = Vec::with_capacity(new.len());
+        for r in new {
+            let ok = match self.shown.iter().find(|o| o.id == r.id) {
+                Some(o) if *o == r => true,
+                Some(_) => self.set(NIM_MODIFY, &r) || self.set(NIM_ADD, &r),
+                None => self.set(NIM_ADD, &r),
+            };
+            if ok {
+                kept.push(r);
             }
         }
-        self.shown = new;
+        self.shown = kept;
+        self.promote();
     }
 
     /// Explorer restarted ("TaskbarCreated"): all our icons are gone, add them back.
-    pub fn readd_all(&self) {
-        self.shown.iter().for_each(|r| self.notify(NIM_ADD, r));
+    pub fn readd_all(&mut self) {
+        let all = std::mem::take(&mut self.shown);
+        self.update(all);
     }
 
     /// Taskbar theme changed: redraw with the new text color.
     pub fn redraw_all(&self) {
-        self.shown.iter().for_each(|r| self.notify(NIM_MODIFY, r));
+        self.shown.iter().for_each(|r| {
+            self.set(NIM_MODIFY, r);
+        });
     }
 
     pub fn clear(&mut self) {
-        self.shown.iter().for_each(|r| self.notify(NIM_DELETE, r));
+        self.shown.iter().for_each(|r| {
+            self.set(NIM_DELETE, r);
+        });
         self.shown.clear();
     }
 
-    fn notify(&self, msg: NOTIFY_ICON_MESSAGE, r: &Reading) {
+    /// True while some icon still waits for the shell to register it (see `promote`).
+    pub fn unsettled(&self) -> bool {
+        self.shown.iter().any(|r| !self.settled.contains(&uid(&r.id)))
+    }
+
+    /// Windows 11 hides new tray icons behind "^". Show ours on the taskbar the first time they
+    /// appear: set IsPromoted=1 on our entries in HKCU\Control Panel\NotifyIconSettings, but only
+    /// where the value is absent. Once the user drags an icon away, Windows writes 0 and we leave it.
+    ///
+    /// Explorer appends each newly promoted icon at the right end, in no reliable order when several
+    /// arrive together, so promote ONE per call (the caller spaces calls ~1 s apart): devices then
+    /// keep a stable left-to-right order.
+    pub fn promote(&mut self) {
+        let order: Vec<u32> = self.shown.iter().map(|r| uid(&r.id))
+            .filter(|u| !self.settled.contains(u)).collect();
+        let entries = notify_entries();
+        for u in order {
+            let Some((_, sub, has_value)) = entries.iter().find(|e| e.0 == u) else { return }; // not registered yet: wait
+            self.settled.push(u);
+            if !has_value {
+                let one = 1u32;
+                let path = w(&format!("Control Panel\\NotifyIconSettings\\{sub}"));
+                unsafe {
+                    RegSetKeyValueW(HKEY_CURRENT_USER, path.as_ptr(), w("IsPromoted").as_ptr(), REG_DWORD, &one as *const u32 as _, 4);
+                }
+                return; // one per call
+            }
+        }
+    }
+
+    fn set(&self, msg: NOTIFY_ICON_MESSAGE, r: &Reading) -> bool {
         unsafe {
             let mut nid: NOTIFYICONDATAW = std::mem::zeroed();
             nid.cbSize = size_of::<NOTIFYICONDATAW>() as u32;
@@ -65,31 +109,65 @@ impl Tray {
             if msg != NIM_DELETE {
                 nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP;
                 nid.uCallbackMessage = WM_TRAY;
-                nid.hIcon = render(r.percent, color(r.percent, r.charging, light_taskbar()));
-                let tip = tooltip(r);
-                for (d, s) in nid.szTip.iter_mut().zip(tip.encode_utf16().take(127)) {
+                nid.hIcon = render(r, light_taskbar());
+                for (d, s) in nid.szTip.iter_mut().zip(tooltip(r).encode_utf16().take(127)) {
                     *d = s;
                 }
             }
-            Shell_NotifyIconW(msg, &nid);
-            if msg == NIM_ADD {
+            let ok = Shell_NotifyIconW(msg, &nid) != 0;
+            if ok && msg == NIM_ADD {
                 nid.Anonymous.uVersion = NOTIFYICON_VERSION_4;
                 Shell_NotifyIconW(NIM_SETVERSION, &nid);
             }
             if !nid.hIcon.is_null() {
                 DestroyIcon(nid.hIcon); // the shell keeps its own copy
             }
+            ok
         }
     }
 }
 
+/// Our entries in HKCU\Control Panel\NotifyIconSettings: (icon uid, subkey name, has IsPromoted).
+fn notify_entries() -> Vec<(u32, String, bool)> {
+    let mut out = Vec::new();
+    unsafe {
+        let base = w("Control Panel\\NotifyIconSettings");
+        let mut key = null_mut();
+        if RegOpenKeyExW(HKEY_CURRENT_USER, base.as_ptr(), 0, KEY_READ, &mut key) != ERROR_SUCCESS {
+            return out;
+        }
+        let mut i = 0;
+        loop {
+            let mut name = [0u16; 64];
+            let mut len = name.len() as u32;
+            if RegEnumKeyExW(key, i, name.as_mut_ptr(), &mut len, null_mut(), null_mut(), null_mut(), null_mut()) != ERROR_SUCCESS {
+                break;
+            }
+            i += 1;
+            let sub = name.as_ptr();
+            let Some(uid) = reg_dword(key, sub, "UID") else { continue };
+            if reg_string(key, sub, "ExecutablePath").to_ascii_lowercase().ends_with("\\pila.exe") {
+                out.push((uid, String::from_utf16_lossy(&name[..len as usize]), reg_dword(key, sub, "IsPromoted").is_some()));
+            }
+        }
+        RegCloseKey(key);
+    }
+    out
+}
+
 /// Next set of icons: asleep devices keep their last shown value (hidden if never seen awake);
-/// sorted and deduplicated by id.
+/// an asleep id ending in '*' keeps every shown device with that prefix. Sorted, deduplicated.
 fn merge(shown: &[Reading], new: Vec<Reading>) -> Vec<Reading> {
-    let mut out: Vec<Reading> = new
-        .into_iter()
-        .filter_map(|r| if r.asleep { shown.iter().find(|o| o.id == r.id).cloned() } else { Some(r) })
-        .collect();
+    let mut out = Vec::new();
+    for r in new {
+        if !r.asleep {
+            out.push(r);
+        } else if let Some(prefix) = r.id.strip_suffix('*') {
+            out.extend(shown.iter().filter(|o| o.id.starts_with(prefix)).cloned());
+        } else {
+            out.extend(shown.iter().find(|o| o.id == r.id).cloned());
+        }
+    }
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out.dedup_by(|a, b| a.id == b.id);
     out
@@ -100,19 +178,44 @@ fn tooltip(r: &Reading) -> String {
     format!("{} — {}%{}", r.name, r.percent, charging)
 }
 
-/// Stable icon id per device (FNV-1a), so icons keep their place across polls.
+/// Stable icon id per device (FNV-1a). Windows remembers placement and visibility by it.
 fn uid(id: &str) -> u32 {
     id.bytes().fold(0x811C9DC5u32, |h, b| (h ^ b as u32).wrapping_mul(0x0100_0193))
 }
 
+const NUMBER_FONT: &str = "Segoe UI Semibold";
+const GLYPH_FONT: &str = "Segoe MDL2 Assets"; // on Windows 10 and 11, same code points as Segoe Fluent Icons
+
+fn glyph(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Headset => "\u{E7F6}",  // Headphone
+        Kind::Mouse => "\u{E962}",    // Mouse
+        Kind::Keyboard => "\u{E765}", // KeyboardClassic
+        Kind::Gamepad => "\u{E7FC}",  // Game
+        Kind::Speaker => "\u{E7F5}",  // Speakers
+        Kind::Other => "\u{E702}",    // Bluetooth
+    }
+}
+
 fn light_taskbar() -> bool {
-    let key: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\0".encode_utf16().collect();
-    let val: Vec<u16> = "SystemUsesLightTheme\0".encode_utf16().collect();
+    let key = w("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
+    unsafe { reg_dword(HKEY_CURRENT_USER, key.as_ptr(), "SystemUsesLightTheme") == Some(1) }
+}
+
+unsafe fn reg_dword(key: HKEY, sub: *const u16, value: &str) -> Option<u32> {
     let (mut data, mut size) = (0u32, 4u32);
-    let st = unsafe {
-        RegGetValueW(HKEY_CURRENT_USER, key.as_ptr(), val.as_ptr(), RRF_RT_REG_DWORD, null_mut(), &mut data as *mut u32 as _, &mut size)
-    };
-    st == ERROR_SUCCESS && data == 1
+    let st = unsafe { RegGetValueW(key, sub, w(value).as_ptr(), RRF_RT_REG_DWORD, null_mut(), &mut data as *mut u32 as _, &mut size) };
+    (st == ERROR_SUCCESS).then_some(data)
+}
+
+unsafe fn reg_string(key: HKEY, sub: *const u16, value: &str) -> String {
+    let mut buf = [0u16; 512];
+    let mut size = size_of_val(&buf) as u32;
+    let st = unsafe { RegGetValueW(key, sub, w(value).as_ptr(), RRF_RT_REG_SZ, null_mut(), buf.as_mut_ptr() as _, &mut size) };
+    if st != ERROR_SUCCESS {
+        return String::new();
+    }
+    String::from_utf16_lossy(&buf[..buf.iter().position(|&c| c == 0).unwrap_or(0)])
 }
 
 /// Text color 0xRRGGBB: warning tints at <=20 / <=10 % (not while charging), per taskbar theme.
@@ -122,57 +225,146 @@ fn color(percent: u8, charging: bool, light: bool) -> u32 {
     palette[level]
 }
 
-/// Draws the number white-on-black, takes luminance as alpha, tints it, and builds an HICON.
-/// One font size for every number: the largest at which "88" (widest label) fills the icon.
-/// Glyphs are centered on their real ink bounds.
-fn render(percent: u8, c: u32) -> HICON {
+/// Builds the device icon: glyph left, number right-aligned, sharing one square.
+/// The number gets the room "88" needs (so every value has one size); the glyph gets the rest.
+fn render(r: &Reading, light: bool) -> HICON {
     unsafe {
         let s = GetSystemMetricsForDpi(SM_CXSMICON, GetDpiForSystem()).max(16);
-        let scratch = s * 2;
-        let dc = CreateCompatibleDC(null_mut());
-        let (bmp, bits) = dib(dc, scratch);
-        SelectObject(dc, bmp);
-        SetTextColor(dc, 0xFFFFFF);
-        SetBkMode(dc, TRANSPARENT as i32);
-        let px = std::slice::from_raw_parts(bits, (scratch * scratch) as usize);
-
-        let mut em = s * 3 / 2;
-        while em > 6 && draw(dc, bits, scratch, em, "88").is_none_or(|(x0, y0, x1, y1)| x1 - x0 >= s || y1 - y0 >= s) {
-            em -= 1;
+        if s < 24 {
+            return icon(s, &pixel_art(r, light, s)); // fonts turn to mush below 24 px
         }
-        let mut alpha = vec![0u8; (s * s) as usize];
-        if let Some((x0, y0, x1, y1)) = draw(dc, bits, scratch, em, &label(percent)) {
-            let (w, h) = ((x1 - x0 + 1).min(s), (y1 - y0 + 1).min(s));
-            let (ox, oy) = ((s - w) / 2, (s - h) / 2);
+        let gap = (s / 16).max(1);
+        let digits_w = s * 9 / 16;
+        let (num, nw, nh) = raster(&label(r.percent), NUMBER_FONT, "88", digits_w, s);
+        let (gly, gw, gh) = raster(glyph(r.kind), GLYPH_FONT, glyph(r.kind), s - digits_w - gap, s * 3 / 4);
+
+        // Straight (not premultiplied) BGRA, as in .ico files.
+        let mut px = vec![0u32; (s * s) as usize];
+        let mut blit = |a: &[u8], w: i32, h: i32, ox: i32, c: u32| {
+            let oy = (s - h) / 2;
             for y in 0..h {
                 for x in 0..w {
-                    alpha[((y + oy) * s + x + ox) as usize] = (px[((y + y0) * scratch + x + x0) as usize] & 0xFF) as u8;
+                    let v = a[(y * w + x) as usize] as u32;
+                    if v > 0 {
+                        px[((y + oy) * s + x + ox) as usize] = v << 24 | c;
+                    }
+                }
+            }
+        };
+        blit(&gly, gw, gh, 0, color(100, false, light));
+        blit(&num, nw, nh, s - nw, color(r.percent, r.charging, light));
+        icon(s, &px)
+    }
+}
+
+// Hand-made 16 px art. Rows top to bottom, most significant used bit = leftmost pixel.
+#[rustfmt::skip]
+const DIGITS: [[u8; 7]; 11] = [
+    [0b0110, 0b1001, 0b1001, 0b1001, 0b1001, 0b1001, 0b0110], // 0
+    [0b0010, 0b0110, 0b0010, 0b0010, 0b0010, 0b0010, 0b0111], // 1
+    [0b0110, 0b1001, 0b0001, 0b0010, 0b0100, 0b1000, 0b1111], // 2
+    [0b1110, 0b0001, 0b0001, 0b0110, 0b0001, 0b0001, 0b1110], // 3
+    [0b1001, 0b1001, 0b1001, 0b1111, 0b0001, 0b0001, 0b0001], // 4
+    [0b1111, 0b1000, 0b1000, 0b1110, 0b0001, 0b0001, 0b1110], // 5
+    [0b0110, 0b1000, 0b1000, 0b1110, 0b1001, 0b1001, 0b0110], // 6
+    [0b1111, 0b0001, 0b0010, 0b0010, 0b0100, 0b0100, 0b0100], // 7
+    [0b0110, 0b1001, 0b1001, 0b0110, 0b1001, 0b1001, 0b0110], // 8
+    [0b0110, 0b1001, 0b1001, 0b0111, 0b0001, 0b0001, 0b0110], // 9
+    [0b1111, 0b1000, 0b1000, 0b1110, 0b1000, 0b1000, 0b1000], // F
+];
+
+/// (width, rows) of each device glyph, 7 rows tall like the digits.
+#[rustfmt::skip]
+fn glyph_art(kind: Kind) -> (i32, [u8; 7]) {
+    match kind {
+        Kind::Headset => (6, [0b011110, 0b100001, 0b100001, 0b100001, 0b110011, 0b110011, 0b110011]),
+        Kind::Mouse => (5, [0b00100, 0b01110, 0b10101, 0b11111, 0b10001, 0b10001, 0b01110]), // cable + buttons
+        Kind::Keyboard => (6, [0b000000, 0b111111, 0b101011, 0b110101, 0b100001, 0b111111, 0b000000]),
+        Kind::Gamepad => (6, [0b000000, 0b011110, 0b101101, 0b111111, 0b110011, 0b100001, 0b000000]),
+        Kind::Speaker => (6, [0b000100, 0b001100, 0b111101, 0b111101, 0b111101, 0b001100, 0b000100]),
+        Kind::Other => (5, [0b00100, 0b00110, 0b10101, 0b01110, 0b10101, 0b00110, 0b00100]), // Bluetooth
+    }
+}
+
+/// 16 px layout centered in an `s` px icon: glyph in columns 0..6, number right-aligned.
+fn pixel_art(r: &Reading, light: bool, s: i32) -> Vec<u32> {
+    let mut px = vec![0u32; (s * s) as usize];
+    let pad = (s - 16) / 2;
+    let mut put = |x0: i32, rows: &[u8; 7], w: i32, c: u32| {
+        for (y, bits) in rows.iter().enumerate() {
+            for x in 0..w {
+                if bits >> (w - 1 - x) & 1 == 1 {
+                    px[((pad + 4 + y as i32) * s + pad + x0 + x) as usize] = 0xFF00_0000 | c;
                 }
             }
         }
-        DeleteObject(bmp);
+    };
+    let (gw, g) = glyph_art(r.kind);
+    put((6 - gw) / 2, &g, gw, color(100, false, light));
+    let text = label(r.percent);
+    let c = color(r.percent, r.charging, light);
+    let mut x = 16 - (text.len() as i32 * 5 - 1);
+    for ch in text.chars() {
+        let d = ch.to_digit(10).map_or(10, |d| d as usize);
+        put(x, &DIGITS[d], 4, c);
+        x += 5;
+    }
+    px
+}
 
-        // Icon alpha is straight (not premultiplied), as in .ico files.
-        let (icon_bmp, icon_bits) = dib(dc, s);
-        for (i, a) in alpha.iter().enumerate() {
-            *icon_bits.add(i) = (*a as u32) << 24 | c;
+/// Rasterizes `text` and crops it to its ink. Font size: the largest at which `fit` stays within
+/// `max_w` x `max_h`. Returns (alpha, width, height).
+fn raster(text: &str, face: &str, fit: &str, max_w: i32, max_h: i32) -> (Vec<u8>, i32, i32) {
+    unsafe {
+        let scratch = max_h.max(max_w) * 3;
+        let dc = CreateCompatibleDC(null_mut());
+        let (bmp, bits) = dib(dc, scratch);
+        let old_bmp = SelectObject(dc, bmp);
+        SetTextColor(dc, 0xFFFFFF);
+        SetBkMode(dc, TRANSPARENT as i32);
+        let mut em = max_h * 3 / 2;
+        while em > 5 && draw(dc, bits, scratch, em, face, fit).is_none_or(|(x0, y0, x1, y1)| x1 - x0 >= max_w || y1 - y0 >= max_h) {
+            em -= 1;
         }
+        let px = std::slice::from_raw_parts(bits, (scratch * scratch) as usize);
+        let out = match draw(dc, bits, scratch, em, face, text) {
+            Some((x0, y0, x1, y1)) => {
+                let (w, h) = ((x1 - x0 + 1).min(max_w), (y1 - y0 + 1).min(max_h));
+                let a = (0..h).flat_map(|y| (0..w).map(move |x| (y, x)))
+                    .map(|(y, x)| (px[((y + y0) * scratch + x + x0) as usize] & 0xFF) as u8).collect();
+                (a, w, h)
+            }
+            None => (Vec::new(), 0, 0),
+        };
+        SelectObject(dc, old_bmp);
+        DeleteObject(bmp);
+        DeleteDC(dc);
+        out
+    }
+}
+
+/// s x s straight-alpha BGRA pixels -> HICON.
+unsafe fn icon(s: i32, px: &[u32]) -> HICON {
+    unsafe {
+        let dc = CreateCompatibleDC(null_mut());
+        let (color_bmp, bits) = dib(dc, s);
+        std::ptr::copy_nonoverlapping(px.as_ptr(), bits, px.len());
         let mask_bytes = vec![0u8; ((s + 15) / 16 * 2 * s) as usize];
         let mask = CreateBitmap(s, s, 1, 1, mask_bytes.as_ptr() as _);
-        let info = ICONINFO { fIcon: 1, xHotspot: 0, yHotspot: 0, hbmMask: mask, hbmColor: icon_bmp };
+        let info = ICONINFO { fIcon: 1, xHotspot: 0, yHotspot: 0, hbmMask: mask, hbmColor: color_bmp };
         let icon = CreateIconIndirect(&info);
         DeleteObject(mask);
-        DeleteObject(icon_bmp);
+        DeleteObject(color_bmp);
         DeleteDC(dc);
         icon
     }
 }
 
 /// Renders `text` at font size `em` into the cleared scratch bitmap; returns its ink bounds.
-unsafe fn draw(dc: HDC, bits: *mut u32, scratch: i32, em: i32, text: &str) -> Option<(i32, i32, i32, i32)> {
+unsafe fn draw(dc: HDC, bits: *mut u32, scratch: i32, em: i32, face: &str, text: &str) -> Option<(i32, i32, i32, i32)> {
     unsafe {
         let font = CreateFontW(-em, 0, 0, 0, FW_NORMAL as i32, 0, 0, 0, DEFAULT_CHARSET as u32, OUT_TT_PRECIS as u32,
-            CLIP_DEFAULT_PRECIS as u32, ANTIALIASED_QUALITY as u32, DEFAULT_PITCH as u32, w("Segoe UI Semibold").as_ptr());
+            CLIP_DEFAULT_PRECIS as u32, ANTIALIASED_QUALITY as u32, DEFAULT_PITCH as u32, w(face).as_ptr());
         let old = SelectObject(dc, font);
         std::ptr::write_bytes(bits, 0, (scratch * scratch) as usize);
         let t: Vec<u16> = text.encode_utf16().collect();
@@ -228,7 +420,7 @@ mod tests {
     }
 
     fn r(id: &str, percent: u8, asleep: bool) -> Reading {
-        Reading { id: id.into(), name: id.into(), percent, charging: false, asleep }
+        Reading { id: id.into(), name: id.into(), percent, charging: false, kind: Kind::Mouse, asleep }
     }
 
     #[test]
@@ -241,17 +433,37 @@ mod tests {
     }
 
     #[test]
+    fn asleep_wildcard_keeps_whole_receiver() {
+        let shown = vec![r("logi:c547:01", 93, false), r("logi:c547:02", 40, false), r("ss:12e0", 80, false)];
+        let new = vec![r("logi:c547:*", 0, true), r("ss:12e0", 79, false)];
+        assert_eq!(merge(&shown, new), vec![r("logi:c547:01", 93, false), r("logi:c547:02", 40, false), r("ss:12e0", 79, false)]);
+    }
+
+    #[test]
     fn render_does_not_leak_gdi() {
         use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetGuiResources, GR_GDIOBJECTS, GR_USEROBJECTS};
         let count = || unsafe { GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS) + GetGuiResources(GetCurrentProcess(), GR_USEROBJECTS) };
-        unsafe { DestroyIcon(render(50, 0xFFFFFF)) }; // warm up caches
+        unsafe { DestroyIcon(render(&r("x", 50, false), false)) }; // warm up caches
         let before = count();
-        for p in 0..=100 {
-            let icon = render(p, 0xFFFFFF);
+        for p in 0..=100u8 {
+            let icon = render(&r("x", p, false), p % 2 == 0);
             assert!(!icon.is_null());
             unsafe { DestroyIcon(icon) };
         }
         assert!(count() <= before + 2, "GDI/USER objects grew: {before} -> {}", count());
+    }
+
+    #[test]
+    fn pixel_art_fits_every_value() {
+        for size in [16, 20] {
+            for p in 0..=100u8 {
+                let px = pixel_art(&r("x", p, false), false, size);
+                assert!(px.iter().any(|&v| v != 0));
+            }
+        }
+        // glyph and number never overlap: column 6 (the gap) stays empty for "88"
+        let px = pixel_art(&r("x", 88, false), false, 16);
+        assert!((0..16).all(|y| px[y * 16 + 6] == 0));
     }
 
     #[test]

@@ -4,7 +4,7 @@
 use std::time::{Duration, Instant};
 
 use crate::hid::{self, Dev};
-use crate::reading::{scale, Reading};
+use crate::reading::{scale, Kind, Reading};
 
 struct Model {
     name: &'static str,
@@ -59,28 +59,27 @@ pub fn read(out: &mut Vec<Reading>) {
         let Some(r) = Dev::open(&info).and_then(|d| query(&d, m.req)) else { continue };
         done.push(info.pid);
         if let Some((percent, charging)) = decode(m, &r) {
-            out.push(Reading { id: format!("ss:{:04x}", info.pid), name: m.name.into(), percent, charging, asleep: false });
+            out.push(Reading { id: format!("ss:{:04x}", info.pid), name: m.name.into(), percent, charging, kind: Kind::Headset, asleep: false });
         }
     }
 }
 
-/// Writes the request and returns the reply that echoes it (or the first reply if none does).
+/// Writes the request and returns the reply that echoes it. Anything else (volume knob events...)
+/// is ignored: decoding an unrelated report would show a wrong percentage.
 fn query(dev: &Dev, req: &[u8]) -> Option<Vec<u8>> {
     if !dev.write(req) {
         return None;
     }
     let echo = strip(req);
     let deadline = Instant::now() + Duration::from_millis(500);
-    let mut first = None;
     while let Some(left) = deadline.checked_duration_since(Instant::now()) {
         let Some(r) = dev.read(left.as_millis().max(1) as u32) else { break };
         let r = strip(&r).to_vec();
         if r.starts_with(echo) {
             return Some(r);
         }
-        first.get_or_insert(r);
     }
-    first
+    None
 }
 
 fn strip(r: &[u8]) -> &[u8] {
