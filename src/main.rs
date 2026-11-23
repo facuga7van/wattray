@@ -166,6 +166,9 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                 NIN_SELECT | NIN_KEYSELECT => rescan(),
                 _ => {}
             },
+            WM_POWERBROADCAST if wp == PBT_APMRESUMEAUTOMATIC as usize => {
+                SetTimer(hwnd, RESCAN_TIMER, 5000, None); // back from sleep: give radios time to relink
+            }
             WM_DEVICECHANGE => {
                 SetTimer(hwnd, RESCAN_TIMER, 2000, None); // debounce bursts of device events
             }

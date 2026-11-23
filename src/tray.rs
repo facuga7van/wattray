@@ -19,17 +19,22 @@ pub struct Tray {
     shown: Vec<Reading>,
     /// Icon ids whose taskbar visibility is settled (promoted by us, or chosen by the user).
     settled: Vec<u32>,
+    /// Last awake reading of every device, persisted, so an asleep device shows its value even
+    /// right after a restart.
+    cache: Vec<Reading>,
+    /// Devices already warned about for the current discharge.
+    warned: Vec<String>,
 }
 
 impl Tray {
     pub fn new(hwnd: HWND) -> Tray {
-        Tray { hwnd, shown: Vec::new(), settled: Vec::new() }
+        Tray { hwnd, shown: Vec::new(), settled: Vec::new(), cache: load_cache(), warned: Vec::new() }
     }
 
     /// Diff by id: add new devices, drop gone ones, redraw only changed ones.
     /// A device whose icons the shell refused is not remembered, so the next poll retries it.
     pub fn update(&mut self, new: Vec<Reading>) {
-        let new = merge(&self.shown, new);
+        let new = merge(&self.shown, &self.cache, new);
         for old in &self.shown {
             if !new.iter().any(|r| r.id == old.id) {
                 self.set(NIM_DELETE, old);
@@ -46,8 +51,49 @@ impl Tray {
                 kept.push(r);
             }
         }
+        for r in &kept {
+            let (notify, warned) = warn_step(self.warned.contains(&r.id), r);
+            if notify {
+                self.balloon(r);
+            }
+            self.warned.retain(|id| *id != r.id);
+            if warned {
+                self.warned.push(r.id.clone());
+            }
+        }
+        let mut cache = self.cache.clone();
+        for r in &kept {
+            cache.retain(|c| c.id != r.id);
+            cache.push(r.clone());
+        }
+        cache.sort_by(|a, b| a.id.cmp(&b.id));
+        if cache != self.cache {
+            save_cache(&cache);
+            self.cache = cache;
+        }
         self.shown = kept;
         self.promote();
+    }
+
+    /// One native notification ("toast") for a device that just went low.
+    fn balloon(&self, r: &Reading) {
+        unsafe {
+            let mut nid: NOTIFYICONDATAW = std::mem::zeroed();
+            nid.cbSize = size_of::<NOTIFYICONDATAW>() as u32;
+            nid.hWnd = self.hwnd;
+            nid.uID = uid(&r.id);
+            nid.uFlags = NIF_INFO;
+            nid.dwInfoFlags = NIIF_WARNING | NIIF_RESPECT_QUIET_TIME;
+            let title = if crate::spanish() { "Batería baja" } else { "Low battery" };
+            let text = format!("{} — {}%", r.name, r.percent);
+            for (d, s) in nid.szInfoTitle.iter_mut().zip(title.encode_utf16().take(63)) {
+                *d = s;
+            }
+            for (d, s) in nid.szInfo.iter_mut().zip(text.encode_utf16().take(255)) {
+                *d = s;
+            }
+            Shell_NotifyIconW(NIM_MODIFY, &nid);
+        }
     }
 
     /// Explorer restarted ("TaskbarCreated"): all our icons are gone, add them back.
@@ -155,9 +201,51 @@ fn notify_entries() -> Vec<(u32, String, bool)> {
     out
 }
 
-/// Next set of icons: asleep devices keep their last shown value (hidden if never seen awake);
-/// an asleep id ending in '*' keeps every shown device with that prefix. Sorted, deduplicated.
-fn merge(shown: &[Reading], new: Vec<Reading>) -> Vec<Reading> {
+/// Low-battery warning, once per discharge: fires when a device reaches 10 % (not charging) and
+/// re-arms once it charges or climbs above 15 %. Returns (notify now, warned after this reading).
+fn warn_step(warned: bool, r: &Reading) -> (bool, bool) {
+    if r.percent <= 10 && !r.charging {
+        (!warned, true)
+    } else {
+        (false, warned && !r.charging && r.percent <= 15)
+    }
+}
+
+const CACHE_KEY: &str = "Software\\pila";
+
+/// Cache lines: id \t name \t percent \t kind index.
+fn load_cache() -> Vec<Reading> {
+    let text = unsafe { reg_string(HKEY_CURRENT_USER, w(CACHE_KEY).as_ptr(), "last") };
+    parse_cache(&text)
+}
+
+fn parse_cache(text: &str) -> Vec<Reading> {
+    text.lines()
+        .filter_map(|l| {
+            let mut f = l.split('\t');
+            let (id, name) = (f.next()?.to_string(), f.next()?.to_string());
+            let percent = f.next()?.parse::<u8>().ok()?.min(100);
+            let kind = *Kind::ALL.get(f.next()?.parse::<usize>().ok()?)?;
+            Some(Reading { id, name, percent, charging: false, kind, asleep: false })
+        })
+        .collect()
+}
+
+fn format_cache(cache: &[Reading]) -> String {
+    cache.iter().map(|r| format!("{}\t{}\t{}\t{}\n", r.id, r.name.replace(['\t', '\n'], " "), r.percent, r.kind as usize)).collect()
+}
+
+fn save_cache(cache: &[Reading]) {
+    let value = w(&format_cache(cache));
+    unsafe {
+        RegSetKeyValueW(HKEY_CURRENT_USER, w(CACHE_KEY).as_ptr(), w("last").as_ptr(), REG_SZ, value.as_ptr() as _, (value.len() * 2) as u32);
+    }
+}
+
+/// Next set of icons: asleep devices keep their last known value (from this run or the persisted
+/// cache; hidden if never seen awake); an asleep id ending in '*' keeps every shown device with
+/// that prefix. Sorted, deduplicated.
+fn merge(shown: &[Reading], cache: &[Reading], new: Vec<Reading>) -> Vec<Reading> {
     let mut out = Vec::new();
     for r in new {
         if !r.asleep {
@@ -165,7 +253,7 @@ fn merge(shown: &[Reading], new: Vec<Reading>) -> Vec<Reading> {
         } else if let Some(prefix) = r.id.strip_suffix('*') {
             out.extend(shown.iter().filter(|o| o.id.starts_with(prefix)).cloned());
         } else {
-            out.extend(shown.iter().find(|o| o.id == r.id).cloned());
+            out.extend(shown.iter().chain(cache).find(|o| o.id == r.id).cloned());
         }
     }
     out.sort_by(|a, b| a.id.cmp(&b.id));
@@ -209,8 +297,8 @@ unsafe fn reg_dword(key: HKEY, sub: *const u16, value: &str) -> Option<u32> {
 }
 
 unsafe fn reg_string(key: HKEY, sub: *const u16, value: &str) -> String {
-    let mut buf = [0u16; 512];
-    let mut size = size_of_val(&buf) as u32;
+    let mut buf = vec![0u16; 8192];
+    let mut size = (buf.len() * 2) as u32;
     let st = unsafe { RegGetValueW(key, sub, w(value).as_ptr(), RRF_RT_REG_SZ, null_mut(), buf.as_mut_ptr() as _, &mut size) };
     if st != ERROR_SUCCESS {
         return String::new();
@@ -430,17 +518,36 @@ mod tests {
     #[test]
     fn asleep_keeps_last_value() {
         let shown = vec![r("mouse", 93, false)];
-        assert_eq!(merge(&shown, vec![r("mouse", 0, true)]), vec![r("mouse", 93, false)]);
-        assert_eq!(merge(&[], vec![r("mouse", 0, true)]), vec![]); // never seen awake
-        assert_eq!(merge(&shown, vec![]), vec![]); // gone = removed
-        assert_eq!(merge(&shown, vec![r("b", 1, false), r("a", 2, false)]), vec![r("a", 2, false), r("b", 1, false)]);
+        assert_eq!(merge(&shown, &[], vec![r("mouse", 0, true)]), vec![r("mouse", 93, false)]);
+        assert_eq!(merge(&[], &[], vec![r("mouse", 0, true)]), vec![]); // never seen awake
+        assert_eq!(merge(&[], &shown, vec![r("mouse", 0, true)]), vec![r("mouse", 93, false)]); // after restart
+        assert_eq!(merge(&shown, &[], vec![]), vec![]); // gone = removed
+        assert_eq!(merge(&shown, &[], vec![r("b", 1, false), r("a", 2, false)]), vec![r("a", 2, false), r("b", 1, false)]);
     }
 
     #[test]
     fn asleep_wildcard_keeps_whole_receiver() {
         let shown = vec![r("logi:c547:01", 93, false), r("logi:c547:02", 40, false), r("ss:12e0", 80, false)];
         let new = vec![r("logi:c547:*", 0, true), r("ss:12e0", 79, false)];
-        assert_eq!(merge(&shown, new), vec![r("logi:c547:01", 93, false), r("logi:c547:02", 40, false), r("ss:12e0", 79, false)]);
+        assert_eq!(merge(&shown, &[], new), vec![r("logi:c547:01", 93, false), r("logi:c547:02", 40, false), r("ss:12e0", 79, false)]);
+    }
+
+    #[test]
+    fn low_battery_warns_once_per_discharge() {
+        let at = |p: u8, charging: bool| Reading { charging, ..r("m", p, false) };
+        assert_eq!(warn_step(false, &at(50, false)), (false, false));
+        assert_eq!(warn_step(false, &at(10, false)), (true, true)); // reaches 10 %: warn
+        assert_eq!(warn_step(true, &at(9, false)), (false, true)); // still low: quiet
+        assert_eq!(warn_step(true, &at(12, false)), (false, true)); // jitter: no re-arm
+        assert_eq!(warn_step(true, &at(8, true)), (false, false)); // charging: re-arm
+        assert_eq!(warn_step(true, &at(16, false)), (false, false)); // above 15 %: re-arm
+    }
+
+    #[test]
+    fn cache_roundtrip() {
+        let c = vec![r("logi:c547:01", 97, false), Reading { kind: Kind::Headset, ..r("ss:12e0", 88, false) }];
+        assert_eq!(parse_cache(&format_cache(&c)), c);
+        assert_eq!(parse_cache("garbage\nbad\tline\n"), vec![]);
     }
 
     #[test]

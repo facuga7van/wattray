@@ -10,6 +10,8 @@ pub enum Kind {
 }
 
 impl Kind {
+    pub const ALL: [Kind; 6] = [Kind::Headset, Kind::Mouse, Kind::Keyboard, Kind::Gamepad, Kind::Speaker, Kind::Other];
+
     /// Best guess from free text (product names, Windows device categories).
     pub fn guess(text: &str) -> Kind {
         let t = text.to_ascii_lowercase();
