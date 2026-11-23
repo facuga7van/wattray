@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wattray: battery level of your wireless peripherals in the Windows tray</title>
+<meta name="description" content="Free, open source Windows tray app that shows the battery of your wireless headset, mouse, keyboard and gamepad. Logitech, SteelSeries, Corsair, HyperX, Razer and Bluetooth.">
+<link rel="canonical" href="https://wattray.wampaland.com.ar/">
+<link rel="icon" type="image/png" sizes="32x32" href="icon-32.png">
+<link rel="apple-touch-icon" href="icon-256.png">
+<meta name="theme-color" content="#141614">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://wattray.wampaland.com.ar/">
+<meta property="og:title" content="wattray: battery level in the Windows tray">
+<meta property="og:description" content="One tray icon per wireless device with its battery percentage. Single 300 KB exe, free and open source.">
+<meta property="og:image" content="https://wattray.wampaland.com.ar/tray.png">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "wattray",
+  "operatingSystem": "Windows 10, Windows 11",
+  "applicationCategory": "UtilitiesApplication",
+  "description": "Shows the battery level of wireless headsets, mice, keyboards and gamepads in the Windows system tray.",
+  "url": "https://wattray.wampaland.com.ar/",
+  "downloadUrl": "https://github.com/facuga7van/wattray/releases/latest/download/wattray.exe",
+  "license": "https://opensource.org/licenses/MIT",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f5f3;
+    --surface: #e9ebe7;
+    --text: #161816;
+    --muted: #4e544e;
+    --line: #d3d7d1;
+    --accent: #107c10;
+    --on-accent: #ffffff;
+    --amber: #9d5d00;
+    --red: #c42b1c;
+    --radius: 10px;
+    --mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141614;
+      --surface: #1c1f1c;
+      --text: #eceeea;
+      --muted: #a3a9a2;
+      --line: #2c302c;
+      --accent: #6ccb5f;
+      --on-accent: #0c1a0b;
+      --amber: #ffb900;
+      --red: #ff6b6b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 17px/1.6 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+  nav { height: 64px; display: flex; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; text-decoration: none; }
+  .brand img { width: 32px; height: 32px; image-rendering: pixelated; }
+  nav .links a { color: var(--muted); text-decoration: none; margin-left: 24px; font-size: 15px; }
+  nav .links a:hover { color: var(--text); }
+
+  .hero {
+    display: grid; grid-template-columns: 1.2fr 1fr; gap: 56px; align-items: center;
+    min-height: min(calc(100dvh - 64px), 720px); padding-block: 32px 72px;
+  }
+  h1 {
+    font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    font-size: clamp(40px, 5vw, 58px); line-height: 1.04; letter-spacing: -0.03em;
+    margin: 0 0 20px; font-weight: 700;
+  }
+  .lede { font-size: 19px; color: var(--muted); max-width: 34ch; margin: 0 0 32px; }
+  .ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; height: 48px; padding: 0 22px; border-radius: var(--radius);
+    font-weight: 600; text-decoration: none; white-space: nowrap; border: 1px solid var(--line);
+    transition: transform .15s cubic-bezier(.16, 1, .3, 1), background-color .15s;
+  }
+  .btn:active { transform: translateY(1px) scale(.99); }
+  .btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .btn.primary:hover { filter: brightness(1.06); }
+  .btn.ghost:hover { background: var(--surface); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  .shot {
+    background: #182725; border-radius: var(--radius); padding: 40px 32px;
+    display: grid; place-items: center; border: 1px solid var(--line);
+  }
+  .shot img { width: 100%; max-width: 468px; height: auto; image-rendering: pixelated; display: block; }
+
+  section { padding: 88px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: clamp(28px, 3.2vw, 38px); line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 16px; }
+  .sub { color: var(--muted); max-width: 60ch; margin: 0 0 40px; }
+
+  .legend { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .chip { background: var(--surface); border-radius: var(--radius); padding: 22px 18px; }
+  .chip b { display: block; font: 700 34px/1 var(--mono); margin-bottom: 10px; }
+  .chip span { color: var(--muted); font-size: 15px; }
+  .c-white b { color: var(--text); }
+  .c-amber b { color: var(--amber); }
+  .c-red b { color: var(--red); }
+  .c-green b { color: var(--accent); }
+  .actions { display: grid; grid-template-columns: repeat(3, auto); justify-content: start; gap: 8px 40px; margin-top: 36px; color: var(--muted); font-size: 15px; }
+  .actions strong { color: var(--text); font-weight: 600; }
+
+  .brands { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 40px; }
+  .brand-row { padding: 22px 0; border-top: 1px solid var(--line); }
+  .brand-row h3 { margin: 0 0 6px; font-size: 18px; }
+  .brand-row p { margin: 0; color: var(--muted); font-size: 15px; }
+  .brand-row em { font-style: normal; color: var(--accent); font-size: 14px; display: block; margin-top: 8px; }
+  .note { color: var(--muted); font-size: 15px; margin-top: 32px; max-width: 70ch; }
+
+  .install { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: start; }
+  .install ol { margin: 0; padding-left: 22px; }
+  .install li { margin-bottom: 14px; padding-left: 6px; }
+  .install li::marker { color: var(--accent); font-weight: 700; }
+  pre {
+    margin: 0 0 14px; background: var(--surface); border-radius: var(--radius); padding: 16px 18px;
+    font: 15px/1.5 var(--mono); overflow-x: auto;
+  }
+  .small { color: var(--muted); font-size: 15px; margin: 0 0 28px; }
+  code { font-family: var(--mono); font-size: .92em; }
+
+  footer { border-top: 1px solid var(--line); padding: 32px 0 48px; color: var(--muted); font-size: 15px; }
+  footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+  @media (max-width: 900px) {
+    .hero { grid-template-columns: 1fr; min-height: 0; max-height: none; gap: 40px; padding-block: 24px 64px; }
+    .legend { grid-template-columns: repeat(2, 1fr); }
+    .brands, .install { grid-template-columns: 1fr; gap: 0; }
+    .install { gap: 40px; }
+    .actions { grid-template-columns: 1fr; }
+    section { padding: 64px 0; }
+    nav .links a:first-child { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
+</style>
+</head>
+<body>
+<header class="wrap">
+  <nav>
+    <a class="brand" href="/"><img src="icon-32.png" alt="" width="32" height="32">wattray</a>
+    <div class="links">
+      <a href="#devices">Devices</a>
+      <a href="https://github.com/facuga7van/wattray">GitHub</a>
+    </div>
+  </nav>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <div>
+      <h1>Your headset's battery, in the tray.</h1>
+      <p class="lede">One small icon per wireless device, with its battery percentage. No vendor apps, no installer.</p>
+      <div class="ctas">
+        <a class="btn primary" href="https://github.com/facuga7van/wattray/releases/latest/download/wattray.exe">Download for Windows</a>
+        <a class="btn ghost" href="https://github.com/facuga7van/wattray">Source code</a>
+      </div>
+    </div>
+    <div class="shot">
+      <img src="tray.png" width="312" height="141" alt="Windows taskbar tray with two wattray icons: a headset at 75 % and a mouse at 96 %">
+    </div>
+  </div>
+
+  <section>
+    <div class="wrap">
+      <h2>Read it at a glance</h2>
+      <p class="sub">The glyph says what the device is, the number says how much battery is left. The color tells you when to care.</p>
+      <div class="legend">
+        <div class="chip c-white"><b>75</b><span>Above 20 %</span></div>
+        <div class="chip c-amber"><b>18</b><span>20 % or less</span></div>
+        <div class="chip c-red"><b>9</b><span>10 % or less, with one notification</span></div>
+        <div class="chip c-green"><b>42</b><span>Charging</span></div>
+        <div class="chip c-white"><b>F</b><span>Full</span></div>
+      </div>
+      <div class="actions">
+        <div><strong>Hover</strong> for the device name</div>
+        <div><strong>Left click</strong> to refresh now</div>
+        <div><strong>Right click</strong> to exit</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="devices">
+    <div class="wrap">
+      <h2>Works with the gear you already have</h2>
+      <p class="sub">wattray talks to each device directly, the same way the vendor software does.</p>
+      <div class="brands">
+        <div class="brand-row"><h3>Logitech</h3><p>Mice, keyboards and headsets on Lightspeed, Unifying or Bolt, or plugged in.</p><em>Tested on PRO X Superlight 2</em></div>
+        <div class="brand-row"><h3>SteelSeries</h3><p>Arctis Nova Pro, Nova 7, Nova 5, Nova 3P/3X, Arctis 7+, 7, 9 and 1/7X/7P.</p><em>Tested on Arctis Nova Pro Wireless</em></div>
+        <div class="brand-row"><h3>Bluetooth</h3><p>Anything Windows shows a battery for in Settings, Bluetooth.</p><em>Tested on Xbox Wireless Controller</em></div>
+        <div class="brand-row"><h3>Corsair</h3><p>Void family, Void Wireless V2, Virtuoso Max, HS80 Max, Virtuoso XT and SE.</p></div>
+        <div class="brand-row"><h3>HyperX</h3><p>Cloud II Wireless, Cloud Alpha Wireless, Cloud Alpha 2 Wireless, Cloud Flight.</p></div>
+        <div class="brand-row"><h3>Razer</h3><p>Wireless mice and keyboards that use Razer's standard protocol.</p></div>
+      </div>
+      <p class="note">Corsair, HyperX and Razer support is ported from open source projects but not confirmed on real hardware yet. Own one? <a href="https://github.com/facuga7van/wattray/issues">Open an issue</a> with the output of <code>wattray.exe --debug</code>.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap install">
+      <div>
+        <h2>Running in a minute</h2>
+        <ol>
+          <li>Download <code>wattray.exe</code> and put it somewhere permanent, like <code>%LOCALAPPDATA%\Programs\wattray\</code>.</li>
+          <li>Run it. The exe is not code-signed, so SmartScreen may ask once: More info, then Run anyway.</li>
+          <li>That's it. It starts with Windows and shows up in Start menu search.</li>
+        </ol>
+      </div>
+      <div>
+        <p class="small">Something reads wrong? See what wattray sees:</p>
+        <pre>wattray.exe --debug</pre>
+        <p class="small">Want it gone? This closes it and removes every trace except the exe:</p>
+        <pre>wattray.exe --uninstall</pre>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>wattray is free and open source, MIT license.</span>
+    <a href="https://github.com/facuga7van/wattray">github.com/facuga7van/wattray</a>
+  </div>
+</footer>
+</body>
+</html>

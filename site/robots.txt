@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://wattray.wampaland.com.ar/sitemap.xml
