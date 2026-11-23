@@ -23,6 +23,7 @@ Your headset, mouse, keyboard or gamepad gets its own tray icon: a glyph for the
 3. Run it. The exe is not code-signed, so SmartScreen may warn the first time: *More info → Run anyway*.
 
 That's it. From now on it starts with Windows.
+<!-- winget-install -->
 
 ## Usage
 

@@ -1,0 +1,57 @@
+name: winget-watch
+
+# Daily check of the first winget submission. Merged: adds the winget install line to the
+# README and the landing page, redeploys the site. Closed: opens an issue. Either way it then
+# disables itself; later versions go through winget-releaser in release.yml.
+on:
+  schedule:
+    - cron: "17 12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR: "486738"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the winget PR
+        run: |
+          state=$(gh pr view "$PR" -R microsoft/winget-pkgs --json state -q .state)
+          echo "microsoft/winget-pkgs#$PR is $state"
+          case "$state" in
+            OPEN)
+              exit 0
+              ;;
+            CLOSED)
+              gh issue create --title "winget PR #$PR was closed without merging" \
+                --body "https://github.com/microsoft/winget-pkgs/pull/$PR was closed. Check the reviewer's comments and resubmit. The winget-watch workflow is now disabled."
+              ;;
+            MERGED)
+              python3 - <<'EOF'
+          from pathlib import Path
+          marker = "<!-- winget-install -->"
+          edits = {
+              "README.md": "\nOr with winget:\n\n```\nwinget install wattray\n```\n",
+              "site/index.html": '<p class="small">Or with winget:</p>\n        <pre>winget install wattray</pre>',
+          }
+          for name, text in edits.items():
+              p = Path(name)
+              s = p.read_text(encoding="utf-8")
+              assert marker in s, f"marker missing in {name}"
+              p.write_text(s.replace(marker, text), encoding="utf-8")
+          EOF
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git commit -am "docs: add winget install now that the package is live"
+              git push
+              gh workflow run pages.yml   # pushes made with GITHUB_TOKEN do not trigger other workflows
+              ;;
+          esac
+          gh workflow disable winget-watch.yml
