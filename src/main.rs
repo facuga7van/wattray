@@ -15,7 +15,7 @@ use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Globalization::GetUserDefaultUILanguage;
 use windows_sys::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
 use windows_sys::Win32::System::LibraryLoader::{GetModuleFileNameW, GetModuleHandleW};
-use windows_sys::Win32::System::Registry::{RegSetKeyValueW, HKEY_CURRENT_USER, REG_SZ};
+use windows_sys::Win32::System::Registry::{RegDeleteKeyValueW, RegSetKeyValueW, HKEY_CURRENT_USER, REG_SZ};
 use windows_sys::Win32::System::Threading::CreateMutexW;
 use windows_sys::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
 use windows_sys::Win32::UI::Shell::NIN_SELECT;
@@ -66,7 +66,7 @@ fn main() {
     }
     unsafe {
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-        let name = w("Local\\pila"); // must outlive the call: GetLastError is read right after
+        let name = w("Local\\wattray"); // must outlive the call: GetLastError is read right after
         CreateMutexW(null(), 0, name.as_ptr());
         if GetLastError() == ERROR_ALREADY_EXISTS {
             return;
@@ -74,7 +74,7 @@ fn main() {
         autostart();
 
         let hinst = GetModuleHandleW(null());
-        let class = w("pila");
+        let class = w("wattray");
         let wc = WNDCLASSW { lpfnWndProc: Some(wndproc), hInstance: hinst, lpszClassName: class.as_ptr(), ..std::mem::zeroed() };
         RegisterClassW(&wc);
         // Hidden top-level (not message-only) so it receives WM_DEVICECHANGE and TaskbarCreated broadcasts.
@@ -138,7 +138,9 @@ fn autostart() {
     let value = w(&format!("\"{}\"", String::from_utf16_lossy(&path[..n])));
     unsafe {
         RegSetKeyValueW(HKEY_CURRENT_USER, w("Software\\Microsoft\\Windows\\CurrentVersion\\Run").as_ptr(),
-            w("pila").as_ptr(), REG_SZ, value.as_ptr() as _, (value.len() * 2) as u32);
+            w("wattray").as_ptr(), REG_SZ, value.as_ptr() as _, (value.len() * 2) as u32);
+        // 0.1 was called "pila": drop its startup entry so it does not launch too.
+        RegDeleteKeyValueW(HKEY_CURRENT_USER, w("Software\\Microsoft\\Windows\\CurrentVersion\\Run").as_ptr(), w("pila").as_ptr());
     }
 }
 

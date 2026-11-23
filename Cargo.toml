@@ -1,5 +1,5 @@
 [package]
-name = "pila"
+name = "wattray"
 version = "0.2.0"
 edition = "2024"
 description = "Battery % of your wireless peripherals in the Windows tray"

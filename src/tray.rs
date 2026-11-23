@@ -173,6 +173,26 @@ impl Tray {
     }
 }
 
+/// Whether a NotifyIconSettings path is THIS exe. Windows keeps one entry per (exe path, icon id),
+/// so other copies (an old install, a dev build) must not count. Paths under known folders may be
+/// stored as "{folder-guid}\rest": compare the rest as a suffix.
+fn same_exe(stored: &str) -> bool {
+    static EXE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    let exe = EXE.get_or_init(|| {
+        let mut buf = [0u16; 1024];
+        let n = unsafe { windows_sys::Win32::System::LibraryLoader::GetModuleFileNameW(null_mut(), buf.as_mut_ptr(), buf.len() as u32) };
+        String::from_utf16_lossy(&buf[..n as usize]).to_lowercase()
+    });
+    path_matches(exe, &stored.to_lowercase())
+}
+
+fn path_matches(exe: &str, stored: &str) -> bool {
+    match stored.strip_prefix('{').and_then(|r| r.split_once('}')) {
+        Some((_, rest)) => !rest.is_empty() && exe.ends_with(rest),
+        None => !stored.is_empty() && exe == stored,
+    }
+}
+
 /// Our entries in HKCU\Control Panel\NotifyIconSettings: (icon uid, subkey name, has IsPromoted).
 fn notify_entries() -> Vec<(u32, String, bool)> {
     let mut out = Vec::new();
@@ -192,7 +212,7 @@ fn notify_entries() -> Vec<(u32, String, bool)> {
             i += 1;
             let sub = name.as_ptr();
             let Some(uid) = reg_dword(key, sub, "UID") else { continue };
-            if reg_string(key, sub, "ExecutablePath").to_ascii_lowercase().ends_with("\\pila.exe") {
+            if same_exe(&reg_string(key, sub, "ExecutablePath")) {
                 out.push((uid, String::from_utf16_lossy(&name[..len as usize]), reg_dword(key, sub, "IsPromoted").is_some()));
             }
         }
@@ -211,11 +231,16 @@ fn warn_step(warned: bool, r: &Reading) -> (bool, bool) {
     }
 }
 
-const CACHE_KEY: &str = "Software\\pila";
+const CACHE_KEY: &str = "Software\\wattray";
+const OLD_CACHE_KEY: &str = "Software\\pila"; // name of 0.1
 
-/// Cache lines: id \t name \t percent \t kind index.
+/// Cache lines: id \t name \t percent \t kind index. Takes over the 0.1 ("pila") key once.
 fn load_cache() -> Vec<Reading> {
-    let text = unsafe { reg_string(HKEY_CURRENT_USER, w(CACHE_KEY).as_ptr(), "last") };
+    let mut text = unsafe { reg_string(HKEY_CURRENT_USER, w(CACHE_KEY).as_ptr(), "last") };
+    if text.is_empty() {
+        text = unsafe { reg_string(HKEY_CURRENT_USER, w(OLD_CACHE_KEY).as_ptr(), "last") };
+    }
+    unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, w(OLD_CACHE_KEY).as_ptr()) };
     parse_cache(&text)
 }
 
@@ -541,6 +566,16 @@ mod tests {
         assert_eq!(warn_step(true, &at(12, false)), (false, true)); // jitter: no re-arm
         assert_eq!(warn_step(true, &at(8, true)), (false, false)); // charging: re-arm
         assert_eq!(warn_step(true, &at(16, false)), (false, false)); // above 15 %: re-arm
+    }
+
+    #[test]
+    fn exe_path_matching() {
+        let exe = r"c:\users\me\appdata\local\programs\wattray\wattray.exe";
+        assert!(path_matches(exe, exe));
+        assert!(path_matches(exe, r"{f1b32785-6fba-4fcf-9d55-7b8e7f157091}\programs\wattray\wattray.exe"));
+        assert!(!path_matches(exe, r"d:\code\wattray\target\release\wattray.exe")); // dev build
+        assert!(!path_matches(exe, r"c:\users\me\appdata\local\programs\pila\wattray.exe"));
+        assert!(!path_matches(exe, ""));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-# pila — diseño
+# wattray — diseño
 
 Mini app de Windows que muestra el % de batería de los periféricos inalámbricos en la bandeja del sistema. Objetivo número uno: consumo mínimo (binario chico, RAM ~1 MB, CPU ~0 entre consultas). Pensada para distribuirse: no se ata a los dispositivos de una sola persona.
 
@@ -11,7 +11,7 @@ Mini app de Windows que muestra el % de batería de los periféricos inalámbric
 | Refresco | Timer de 2 min + reescaneo al conectar/desconectar (`WM_DEVICECHANGE`, debounce 2 s) | La batería cambia lento; reaccionar a conexiones da buena UX |
 | Inicio | Se registra en `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` al arrancar | Sin instalador; se desactiva desde Administrador de tareas → Inicio |
 | Menú | Click derecho → "Salir" | Nada más hace falta |
-| Distribución | Repo público `facuga7van/pila`, MIT, `.exe` en GitHub Releases (Actions al pushear tag `v*`) | Gratis; exe sin firmar → aviso de SmartScreen (aceptado) |
+| Distribución | Repo público `facuga7van/wattray`, MIT, `.exe` en GitHub Releases (Actions al pushear tag `v*`) | Gratis; exe sin firmar → aviso de SmartScreen (aceptado) |
 
 ## Soporte de dispositivos (v1)
 
@@ -52,7 +52,7 @@ Contrato de cada lector: `fn read(out: &mut Vec<Reading>)`, con `Reading { id: S
 
 ## Testing
 
-- `pila.exe --once`: abre una consola, imprime las lecturas y sale. Sirve para validar contra GG/G HUB/Synapse.
+- `wattray.exe --once`: abre una consola, imprime las lecturas y sale. Sirve para validar contra GG/G HUB/Synapse.
 - Tests unitarios chicos: escala → %, voltaje → %, texto del ícono (`100` → `F`), parseo de respuestas HID++/Razer con buffers fijos.
 
 ## Riesgos

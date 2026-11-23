@@ -1,4 +1,4 @@
-# pila
+# wattray
 
 Battery level of your wireless peripherals, in the Windows tray. One icon per device: what it is on the left (headset, mouse, keyboard, gamepad, speaker), the percentage on the right.
 
@@ -22,21 +22,21 @@ Colors: white (black on a light taskbar), amber at 20 % or less, red at 10 % or 
 
 Corsair, HyperX and generic 2.4 GHz dongles are not supported yet. Protocol details come from [HeadsetControl](https://github.com/Sapd/HeadsetControl), [Solaar](https://github.com/pwr-Solaar/Solaar) and [OpenRazer](https://github.com/openrazer/openrazer).
 
-A Logitech device that is paired but asleep keeps showing its last value, and pila checks every 20 s until it wakes.
+A Logitech device that is paired but asleep keeps showing its last value, and wattray checks every 20 s until it wakes.
 
 ## Install
 
-1. Download `pila.exe` from [Releases](https://github.com/facuga7van/pila/releases) and put it somewhere permanent, e.g. `%LOCALAPPDATA%\Programs\pila\`.
+1. Download `wattray.exe` from [Releases](https://github.com/facuga7van/wattray/releases) and put it somewhere permanent, e.g. `%LOCALAPPDATA%\Programs\wattray\`.
 2. Run it. The exe is not code-signed, so SmartScreen may warn the first time: *More info → Run anyway*.
-3. pila puts its icons on the taskbar the first time each device shows up (Windows 11 would hide them behind `^`). Drag one into `^`, or switch it off in Settings → Personalization → Taskbar → Other system tray icons, and Windows remembers: pila never overrides that.
+3. wattray puts its icons on the taskbar the first time each device shows up (Windows 11 would hide them behind `^`). Drag one into `^`, or switch it off in Settings → Personalization → Taskbar → Other system tray icons, and Windows remembers: wattray never overrides that.
 
-To uninstall: right click → Exit, delete the exe, and delete the `pila` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` and the key `HKCU\Software\pila`.
+To uninstall: right click → Exit, delete the exe, and delete the `wattray` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` and the key `HKCU\Software\wattray`.
 
 ## Troubleshooting
 
 ```
-pila.exe --once     # print what it reads and exit
-pila.exe --debug    # same, plus every HID report in hex
+wattray.exe --once     # print what it reads and exit
+wattray.exe --debug    # same, plus every HID report in hex
 ```
 
 Run them from a terminal. If a device reads wrong, open an issue with the `--debug` output.
