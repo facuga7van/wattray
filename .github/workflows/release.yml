@@ -10,6 +10,8 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - run: cargo test --release
@@ -18,3 +20,10 @@ jobs:
         with:
           files: target/release/wattray.exe
           generate_release_notes: true
+      # Opens the PR to microsoft/winget-pkgs. Needs a classic PAT with public_repo in WINGET_TOKEN.
+      - if: env.WINGET_TOKEN != ''
+        uses: vedantmgoyal9/winget-releaser@main
+        with:
+          identifier: facuga7van.wattray
+          installers-regex: 'wattray\.exe$'
+          token: ${{ secrets.WINGET_TOKEN }}

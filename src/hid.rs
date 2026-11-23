@@ -208,6 +208,42 @@ impl Dev {
     }
 }
 
+/// Writes `req` and returns the first reply (leading 0x00 report id dropped, hidapi-style) that
+/// `is_reply` accepts within `ms`. Anything else (volume knob events...) is skipped: decoding an
+/// unrelated report would show a wrong percentage.
+pub fn query(dev: &Dev, req: &[u8], ms: u64, is_reply: impl Fn(&[u8]) -> bool) -> Option<Vec<u8>> {
+    if !dev.write(req) {
+        return None;
+    }
+    read_until(dev, ms, is_reply)
+}
+
+/// The read half of `query`, for protocols that need a pause between write and read.
+pub fn read_until(dev: &Dev, ms: u64, is_reply: impl Fn(&[u8]) -> bool) -> Option<Vec<u8>> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+    while let Some(left) = deadline.checked_duration_since(std::time::Instant::now()) {
+        let r = dev.read(left.as_millis().max(1) as u32)?;
+        let r = strip(&r);
+        if is_reply(r) {
+            return Some(r.to_vec());
+        }
+    }
+    None
+}
+
+/// Drops queued input reports so the next read is the reply to our request.
+pub fn flush(dev: &Dev) {
+    for _ in 0..32 {
+        if dev.read(5).is_none() {
+            break;
+        }
+    }
+}
+
+pub fn strip(r: &[u8]) -> &[u8] {
+    if r.first() == Some(&0) { &r[1..] } else { r }
+}
+
 impl Drop for Dev {
     fn drop(&mut self) {
         unsafe {

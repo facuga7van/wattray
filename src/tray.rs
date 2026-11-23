@@ -278,7 +278,9 @@ fn merge(shown: &[Reading], cache: &[Reading], new: Vec<Reading>) -> Vec<Reading
         } else if let Some(prefix) = r.id.strip_suffix('*') {
             out.extend(shown.iter().filter(|o| o.id.starts_with(prefix)).cloned());
         } else {
-            out.extend(shown.iter().chain(cache).find(|o| o.id == r.id).cloned());
+            // asleep + charging: a headset that reports no level while charging. Last value, shown green.
+            let last = shown.iter().chain(cache).find(|o| o.id == r.id);
+            out.extend(last.map(|o| Reading { charging: o.charging || r.charging, ..o.clone() }));
         }
     }
     out.sort_by(|a, b| a.id.cmp(&b.id));
@@ -331,10 +333,10 @@ unsafe fn reg_string(key: HKEY, sub: *const u16, value: &str) -> String {
     String::from_utf16_lossy(&buf[..buf.iter().position(|&c| c == 0).unwrap_or(0)])
 }
 
-/// Text color 0xRRGGBB: warning tints at <=20 / <=10 % (not while charging), per taskbar theme.
+/// Text color 0xRRGGBB: warning tints at <=20 / <=10 %, green while charging, per taskbar theme.
 fn color(percent: u8, charging: bool, light: bool) -> u32 {
-    let level = if charging { 2 } else if percent <= 10 { 0 } else if percent <= 20 { 1 } else { 2 };
-    let palette = if light { [0xC42B1C, 0x9D5D00, 0x1A1A1A] } else { [0xFF6B6B, 0xFFB900, 0xFFFFFF] };
+    let level = if charging { 3 } else if percent <= 10 { 0 } else if percent <= 20 { 1 } else { 2 };
+    let palette = if light { [0xC42B1C, 0x9D5D00, 0x1A1A1A, 0x107C10] } else { [0xFF6B6B, 0xFFB900, 0xFFFFFF, 0x6CCB5F] };
     palette[level]
 }
 
@@ -533,7 +535,8 @@ mod tests {
         assert_eq!(color(50, false, false), 0xFFFFFF);
         assert_eq!(color(20, false, false), 0xFFB900);
         assert_eq!(color(10, false, true), 0xC42B1C);
-        assert_eq!(color(5, true, false), 0xFFFFFF); // charging: no alarm
+        assert_eq!(color(5, true, false), 0x6CCB5F); // charging: green, no alarm
+        assert_eq!(color(5, true, true), 0x107C10);
     }
 
     fn r(id: &str, percent: u8, asleep: bool) -> Reading {
@@ -547,6 +550,8 @@ mod tests {
         assert_eq!(merge(&[], &[], vec![r("mouse", 0, true)]), vec![]); // never seen awake
         assert_eq!(merge(&[], &shown, vec![r("mouse", 0, true)]), vec![r("mouse", 93, false)]); // after restart
         assert_eq!(merge(&shown, &[], vec![]), vec![]); // gone = removed
+        let charging_no_level = Reading { charging: true, ..r("mouse", 0, true) };
+        assert_eq!(merge(&shown, &[], vec![charging_no_level]), vec![Reading { charging: true, ..r("mouse", 93, false) }]);
         assert_eq!(merge(&shown, &[], vec![r("b", 1, false), r("a", 2, false)]), vec![r("a", 2, false), r("b", 1, false)]);
     }
 

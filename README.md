@@ -9,7 +9,7 @@ Your headset, mouse, keyboard or gamepad gets its own tray icon: a glyph for the
 ## Features
 
 - One icon per device: headset, mouse, keyboard, gamepad or speaker.
-- Reads battery straight from the device over Bluetooth, Logitech HID++, SteelSeries and Razer protocols.
+- Reads battery straight from the device over Bluetooth, Logitech HID++, SteelSeries, Corsair, HyperX and Razer protocols.
 - Checks every 2 minutes, and right away when a device is plugged in or removed. Idle the rest of the time.
 - One Windows notification when a device drops to 10 % (respects Do not disturb).
 - Remembers the last values, so a sleeping mouse shows up right after boot. Rescans when the PC wakes from sleep.
@@ -39,9 +39,8 @@ That's it. From now on it starts with Windows.
 | White (black on a light taskbar) | Battery above 20 % |
 | Amber | 20 % or less |
 | Red | 10 % or less |
+| Green | Charging |
 | `F` | Full (100 %) |
-
-While a device charges the icon stays white and the tooltip says "charging".
 
 **Closed it by accident?** Search "wattray" in the Start menu and open it again.
 
@@ -58,9 +57,11 @@ While a device charges the icon stays white and the tooltip says "charging".
 | Bluetooth | Anything Windows shows a battery for in *Settings → Bluetooth* | Xbox Wireless Controller |
 | Logitech HID++ 2.0 | Logitech mice, keyboards and headsets on Lightspeed, Unifying or Bolt receivers, or plugged in | PRO X Superlight 2 (Lightspeed) |
 | SteelSeries | Arctis Nova Pro, Nova 7, Nova 5, Nova 3P/3X, Arctis 7+, Arctis 7 / Pro, Arctis 1 / 7X / 7P, Arctis 9 | Arctis Nova Pro Wireless |
+| Corsair | Void family (Void, Void Pro, HS70...), Void Wireless V2, Virtuoso Max, HS80 Max, Virtuoso XT, Virtuoso SE | not yet |
+| HyperX | Cloud II Wireless, Cloud Alpha Wireless, Cloud Alpha 2 Wireless, Cloud Flight | not yet |
 | Razer | Wireless mice and keyboards using Razer's standard protocol | not yet |
 
-Corsair, HyperX and generic 2.4 GHz dongles are not supported yet. Protocol details come from [HeadsetControl](https://github.com/Sapd/HeadsetControl), [Solaar](https://github.com/pwr-Solaar/Solaar) and [OpenRazer](https://github.com/openrazer/openrazer).
+"Not yet" means the protocol is ported but nobody has confirmed it on the real device: if you own one, the `--debug` output in an issue helps a lot. Generic 2.4 GHz dongles are not supported. Protocol details come from [HeadsetControl](https://github.com/Sapd/HeadsetControl), [Solaar](https://github.com/pwr-Solaar/Solaar) and [OpenRazer](https://github.com/openrazer/openrazer).
 
 ## Troubleshooting
 
@@ -75,9 +76,11 @@ If a device is missing or reads wrong, [open an issue](https://github.com/facuga
 
 ## Uninstall
 
-1. Right click any wattray icon → Exit.
-2. Delete `wattray.exe` and `%APPDATA%\Microsoft\Windows\Start Menu\Programs\wattray.lnk`.
-3. In the registry, delete the `wattray` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` and the key `HKCU\Software\wattray`.
+```
+wattray.exe --uninstall
+```
+
+It closes wattray and removes its startup entry, Start menu shortcut and saved values. Then delete `wattray.exe`.
 
 ## Build
 

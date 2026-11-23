@@ -1,5 +1,7 @@
 mod bt;
+mod corsair;
 mod hidpp;
+mod hyperx;
 mod razer;
 mod steelseries;
 
@@ -9,6 +11,8 @@ use crate::reading::Reading;
 pub fn read_all() -> Vec<Reading> {
     let mut out = Vec::new();
     steelseries::read(&mut out);
+    corsair::read(&mut out);
+    hyperx::read(&mut out);
     hidpp::read(&mut out);
     razer::read(&mut out);
     bt::read(&mut out);

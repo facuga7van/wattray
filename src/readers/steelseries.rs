@@ -1,8 +1,6 @@
 //! SteelSeries Arctis headsets. Protocol data from HeadsetControl (offsets are hidapi-style:
 //! the leading 0x00 report id is dropped from replies). Verified on hardware: Nova Pro only.
 
-use std::time::{Duration, Instant};
-
 use crate::hid::{self, Dev};
 use crate::reading::{scale, Kind, Reading};
 
@@ -64,26 +62,9 @@ pub fn read(out: &mut Vec<Reading>) {
     }
 }
 
-/// Writes the request and returns the reply that echoes it. Anything else (volume knob events...)
-/// is ignored: decoding an unrelated report would show a wrong percentage.
+/// The reply echoes the request.
 fn query(dev: &Dev, req: &[u8]) -> Option<Vec<u8>> {
-    if !dev.write(req) {
-        return None;
-    }
-    let echo = strip(req);
-    let deadline = Instant::now() + Duration::from_millis(500);
-    while let Some(left) = deadline.checked_duration_since(Instant::now()) {
-        let Some(r) = dev.read(left.as_millis().max(1) as u32) else { break };
-        let r = strip(&r).to_vec();
-        if r.starts_with(echo) {
-            return Some(r);
-        }
-    }
-    None
-}
-
-fn strip(r: &[u8]) -> &[u8] {
-    if r.first() == Some(&0) { &r[1..] } else { r }
+    hid::query(dev, req, 500, |r| r.starts_with(hid::strip(req)))
 }
 
 fn decode(m: &Model, r: &[u8]) -> Option<(u8, bool)> {
@@ -117,7 +98,7 @@ mod tests {
 
     #[test]
     fn strip_unnumbered_report_id() {
-        assert_eq!(strip(&[0x00, 0xb0, 1]), &[0xb0, 1]);
-        assert_eq!(strip(&[0x06, 0xb0]), &[0x06, 0xb0]);
+        assert_eq!(hid::strip(&[0x00, 0xb0, 1]), &[0xb0, 1]);
+        assert_eq!(hid::strip(&[0x06, 0xb0]), &[0x06, 0xb0]);
     }
 }

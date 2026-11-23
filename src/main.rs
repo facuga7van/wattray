@@ -19,7 +19,7 @@ use windows_sys::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_I
 use windows_sys::Win32::Globalization::GetUserDefaultUILanguage;
 use windows_sys::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
 use windows_sys::Win32::System::LibraryLoader::{GetModuleFileNameW, GetModuleHandleW};
-use windows_sys::Win32::System::Registry::{RegDeleteKeyValueW, RegSetKeyValueW, HKEY_CURRENT_USER, REG_SZ};
+use windows_sys::Win32::System::Registry::{RegDeleteKeyValueW, RegDeleteTreeW, RegSetKeyValueW, HKEY_CURRENT_USER, REG_SZ};
 use windows_sys::Win32::System::Threading::CreateMutexW;
 use windows_sys::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
 use windows_sys::Win32::UI::Shell::NIN_SELECT;
@@ -66,6 +66,10 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--once" || a == "--debug") {
         once(args.iter().any(|a| a == "--debug"));
+        return;
+    }
+    if args.iter().any(|a| a == "--uninstall") {
+        uninstall();
         return;
     }
     unsafe {
@@ -162,9 +166,8 @@ fn start_menu_shortcut(exe: &[u16]) {
     type Save = unsafe extern "system" fn(*mut c_void, *const u16, BOOL) -> HRESULT;
     let slot = |obj: *mut c_void, i: usize| unsafe { *(*(obj as *const *const usize)).add(i) };
 
-    // ponytail: %APPDATA% instead of SHGetKnownFolderPath; only differs with roaming-profile redirection.
-    let Ok(appdata) = std::env::var("APPDATA") else { return };
-    let lnk = w(&format!("{appdata}\\Microsoft\\Windows\\Start Menu\\Programs\\wattray.lnk"));
+    let Some(lnk) = shortcut_path() else { return };
+    let lnk = w(&lnk);
     unsafe {
         CoInitializeEx(null(), COINIT_APARTMENTTHREADED as u32);
         let mut link = null_mut();
@@ -179,6 +182,33 @@ fn start_menu_shortcut(exe: &[u16]) {
         }
         transmute::<usize, Release>(slot(link, 2))(link);
     }
+}
+
+// ponytail: %APPDATA% instead of SHGetKnownFolderPath; only differs with roaming-profile redirection.
+fn shortcut_path() -> Option<String> {
+    Some(std::env::var("APPDATA").ok()? + "\\Microsoft\\Windows\\Start Menu\\Programs\\wattray.lnk")
+}
+
+/// `--uninstall`: close the running instance and remove everything wattray wrote. The exe stays:
+/// a running process cannot delete itself.
+fn uninstall() {
+    unsafe {
+        AttachConsole(ATTACH_PARENT_PROCESS);
+        let hwnd = FindWindowW(w("wattray").as_ptr(), null());
+        if !hwnd.is_null() {
+            PostMessageW(hwnd, WM_CLOSE, 0, 0); // DefWindowProc destroys it; WM_DESTROY removes the icons
+        }
+        let run = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+        let approved = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run";
+        for key in [run, approved] {
+            RegDeleteKeyValueW(HKEY_CURRENT_USER, w(key).as_ptr(), w("wattray").as_ptr());
+        }
+        RegDeleteTreeW(HKEY_CURRENT_USER, w("Software\\wattray").as_ptr());
+    }
+    if let Some(lnk) = shortcut_path() {
+        let _ = std::fs::remove_file(lnk);
+    }
+    println!("wattray removed. Delete wattray.exe to finish.");
 }
 
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
