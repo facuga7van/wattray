@@ -2,6 +2,8 @@
 
 Battery level of your wireless peripherals, right in the Windows tray.
 
+![wattray in the tray: headset at 75 %, mouse at 96 %](docs/tray.png)
+
 Your headset, mouse, keyboard or gamepad gets its own tray icon: a glyph for the device type on the left, the battery percentage on the right. No vendor apps, no installer, nothing running in the background except one ~305 KB exe that uses about 2 MB of memory.
 
 ## Features
