@@ -4,7 +4,7 @@ Battery level of your wireless peripherals, in the Windows tray. One icon per de
 
 - ~290 KB single `.exe`, no installer, no runtime, ~2 MB of private memory.
 - Polls every 2 minutes and right away when a device is plugged or unplugged. Idle the rest of the time.
-- Starts with Windows (disable it in Task Manager → Startup apps).
+- Starts with Windows (disable it in Task Manager → Startup apps). Closed it? Search "wattray" in Start: it adds itself to the Start menu on first run.
 - Hover an icon for the device name. Left click: refresh now. Right click: Exit.
 - One Windows notification when a device drops to 10 % (respects Do not disturb).
 - Remembers the last values, so a sleeping mouse shows up right after boot. Rescans after the PC wakes from sleep.
@@ -30,7 +30,7 @@ A Logitech device that is paired but asleep keeps showing its last value, and wa
 2. Run it. The exe is not code-signed, so SmartScreen may warn the first time: *More info → Run anyway*.
 3. wattray puts its icons on the taskbar the first time each device shows up (Windows 11 would hide them behind `^`). Drag one into `^`, or switch it off in Settings → Personalization → Taskbar → Other system tray icons, and Windows remembers: wattray never overrides that.
 
-To uninstall: right click → Exit, delete the exe, and delete the `wattray` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` and the key `HKCU\Software\wattray`.
+To uninstall: right click → Exit, delete the exe and `%APPDATA%\Microsoft\Windows\Start Menu\Programs\wattray.lnk`, and delete the `wattray` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` and the key `HKCU\Software\wattray`.
 
 ## Troubleshooting
 

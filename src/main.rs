@@ -6,12 +6,16 @@ mod readers;
 mod tray;
 
 use std::cell::RefCell;
+use std::ffi::c_void;
+use std::mem::transmute;
 use std::ptr::{null, null_mut};
 use std::sync::atomic::Ordering;
 use std::thread::{self, Thread};
 use std::time::Duration;
 
+use windows_sys::core::{BOOL, GUID, HRESULT};
 use windows_sys::Win32::Foundation::*;
+use windows_sys::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED};
 use windows_sys::Win32::Globalization::GetUserDefaultUILanguage;
 use windows_sys::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
 use windows_sys::Win32::System::LibraryLoader::{GetModuleFileNameW, GetModuleHandleW};
@@ -141,6 +145,39 @@ fn autostart() {
             w("wattray").as_ptr(), REG_SZ, value.as_ptr() as _, (value.len() * 2) as u32);
         // 0.1 was called "pila": drop its startup entry so it does not launch too.
         RegDeleteKeyValueW(HKEY_CURRENT_USER, w("Software\\Microsoft\\Windows\\CurrentVersion\\Run").as_ptr(), w("pila").as_ptr());
+    }
+    start_menu_shortcut(&path[..=n]); // buffer is zeroed: [..=n] keeps the terminator
+}
+
+/// Start menu shortcut, so Windows search finds wattray again after Exit.
+/// Rewritten on every start for the same reason as the Run entry.
+fn start_menu_shortcut(exe: &[u16]) {
+    // windows-sys has no COM interfaces: call IShellLinkW / IPersistFile through their vtables.
+    const CLSID_SHELL_LINK: GUID = GUID::from_u128(0x00021401_0000_0000_c000_000000000046);
+    const IID_SHELL_LINK_W: GUID = GUID::from_u128(0x000214f9_0000_0000_c000_000000000046);
+    const IID_PERSIST_FILE: GUID = GUID::from_u128(0x0000010b_0000_0000_c000_000000000046);
+    type QueryInterface = unsafe extern "system" fn(*mut c_void, *const GUID, *mut *mut c_void) -> HRESULT;
+    type Release = unsafe extern "system" fn(*mut c_void) -> u32;
+    type SetPath = unsafe extern "system" fn(*mut c_void, *const u16) -> HRESULT;
+    type Save = unsafe extern "system" fn(*mut c_void, *const u16, BOOL) -> HRESULT;
+    let slot = |obj: *mut c_void, i: usize| unsafe { *(*(obj as *const *const usize)).add(i) };
+
+    // ponytail: %APPDATA% instead of SHGetKnownFolderPath; only differs with roaming-profile redirection.
+    let Ok(appdata) = std::env::var("APPDATA") else { return };
+    let lnk = w(&format!("{appdata}\\Microsoft\\Windows\\Start Menu\\Programs\\wattray.lnk"));
+    unsafe {
+        CoInitializeEx(null(), COINIT_APARTMENTTHREADED as u32);
+        let mut link = null_mut();
+        if CoCreateInstance(&CLSID_SHELL_LINK, null_mut(), CLSCTX_INPROC_SERVER, &IID_SHELL_LINK_W, &mut link) < 0 {
+            return;
+        }
+        transmute::<usize, SetPath>(slot(link, 20))(link, exe.as_ptr());
+        let mut file = null_mut();
+        if transmute::<usize, QueryInterface>(slot(link, 0))(link, &IID_PERSIST_FILE, &mut file) >= 0 {
+            transmute::<usize, Save>(slot(file, 6))(file, lnk.as_ptr(), 1);
+            transmute::<usize, Release>(slot(file, 2))(file);
+        }
+        transmute::<usize, Release>(slot(link, 2))(link);
     }
 }
 
