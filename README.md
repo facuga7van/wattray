@@ -1,6 +1,6 @@
 # wattray
 
-Battery level of your wireless peripherals, right in the Windows tray.
+Battery level of your wireless peripherals, right in the Windows tray. **[wattray.wampaland.com.ar](https://wattray.wampaland.com.ar)**
 
 ![wattray in the tray: headset at 75 %, mouse at 96 %](docs/tray.png)
 
