@@ -38,8 +38,8 @@ jobs:
           from pathlib import Path
           marker = "<!-- winget-install -->"
           edits = {
-              "README.md": "\nOr with winget:\n\n```\nwinget install wattray\n```\n",
-              "site/index.html": '<p class="small">Or with winget:</p>\n        <pre>winget install wattray</pre>',
+              "README.md": "\nOr with winget. winget does not start apps, so run `wattray` once afterwards:\n\n```\nwinget install wattray\nwattray\n```\n",
+              "site/index.html": '<p class="small">Or with winget. It does not start apps, so run <code>wattray</code> once afterwards:</p>\n        <pre>winget install wattray\nwattray</pre>',
           }
           for name, text in edits.items():
               p = Path(name)
