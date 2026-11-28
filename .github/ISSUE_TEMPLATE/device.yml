@@ -1,0 +1,35 @@
+name: Device not detected / reads wrong
+description: A wireless device that wattray does not show, or shows with a wrong value.
+labels: [device]
+body:
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      description: Brand and exact model.
+      placeholder: ASTRO A30
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection
+      options:
+        - USB dongle / receiver
+        - Bluetooth
+        - Cable
+    validations:
+      required: true
+  - type: textarea
+    id: debug
+    attributes:
+      label: Output of `wattray.exe --debug`
+      description: With the device on and connected, open a terminal in the folder of wattray.exe, run `wattray.exe --debug` and paste everything it prints. The list at the end shows every HID device, including the ones wattray does not know.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: actual
+    attributes:
+      label: Battery level the device or its app shows right now
+      placeholder: 80%

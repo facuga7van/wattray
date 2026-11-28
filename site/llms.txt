@@ -4,6 +4,6 @@
 
 - Download: https://github.com/facuga7van/wattray/releases/latest/download/wattray.exe (single ~300 KB exe, no installer, Windows 10 and 11)
 - Source and docs: https://github.com/facuga7van/wattray (Rust, MIT license)
-- Supported: Logitech HID++ (Lightspeed, Unifying, Bolt), SteelSeries Arctis headsets, Bluetooth devices with a battery in Windows Settings, Corsair headsets, HyperX headsets, Razer wireless mice and keyboards.
+- Supported: Logitech HID++ (Lightspeed, Unifying, Bolt), SteelSeries Arctis headsets, Bluetooth devices with a battery in Windows Settings, Corsair headsets, HyperX headsets, Razer wireless mice and keyboards, and any dongle that reports its battery the standard HID way.
 - Colors: white above 20 %, amber at 20 % or less, red at 10 % or less, green while charging, F when full.
 - Uninstall: run `wattray.exe --uninstall`, then delete the exe.

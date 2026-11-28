@@ -133,6 +133,16 @@ fn once(debug: bool) {
         }
         println!("{:<28} {:>3}%{}", r.name, r.percent, if r.charging { "  charging" } else { "" });
     }
+    if debug {
+        // Every HID interface, recognized or not: tells a new device's protocol apart from a standard one.
+        println!("
+HID interfaces (vid:pid  interface  usage page:usage  input/output/feature bytes  name):");
+        for i in hid::enumerate_all() {
+            let mi = i.mi.map_or("--".into(), |m| format!("mi{m}"));
+            println!("  {:04x}:{:04x}  {mi:<4}  {:04x}:{:04x}  {}/{}/{}  {}", i.vid, i.pid, i.usage_page, i.usage,
+                i.input_len, i.output_len, i.feature_len, i.product);
+        }
+    }
 }
 
 /// HKCU Run entry. Rewritten on every start so a moved exe keeps working;

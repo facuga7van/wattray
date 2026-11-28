@@ -23,6 +23,7 @@ pub fn dump(tag: &str, b: &[u8]) {
 #[derive(Debug)]
 pub struct HidInfo {
     pub path: Vec<u16>,
+    pub vid: u16,
     pub pid: u16,
     pub mi: Option<u8>,
     pub usage_page: u16,
@@ -35,6 +36,17 @@ pub struct HidInfo {
 
 /// All present HID interfaces with vendor id `vid`.
 pub fn enumerate(vid: u16) -> Vec<HidInfo> {
+    let tag = format!("vid_{vid:04x}");
+    list(|lower| lower.contains(&tag))
+}
+
+/// Every present HID interface, any vendor.
+pub fn enumerate_all() -> Vec<HidInfo> {
+    list(|_| true)
+}
+
+/// Interfaces whose lowercase device path passes `keep` (checked before opening anything).
+fn list(keep: impl Fn(&str) -> bool) -> Vec<HidInfo> {
     let mut out = Vec::new();
     unsafe {
         let mut guid = std::mem::zeroed();
@@ -62,7 +74,7 @@ pub fn enumerate(vid: u16) -> Vec<HidInfo> {
             let len = (0..).take_while(|&k| *p.add(k) != 0).count();
             let path: Vec<u16> = std::slice::from_raw_parts(p, len).iter().copied().chain([0]).collect();
             let lower = String::from_utf16_lossy(&path).to_ascii_lowercase();
-            if !lower.contains(&format!("vid_{vid:04x}")) {
+            if !keep(&lower) {
                 continue;
             }
             if let Some(info) = probe(path, &lower) {
@@ -105,6 +117,7 @@ unsafe fn probe(path: Vec<u16>, lower: &str) -> Option<HidInfo> {
         let mi = lower.find("&mi_").and_then(|k| u8::from_str_radix(lower.get(k + 4..k + 6)?, 16).ok());
         Some(HidInfo {
             path,
+            vid: attr.VendorID,
             pid: attr.ProductID,
             mi,
             usage_page: caps.UsagePage,
