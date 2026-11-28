@@ -21,7 +21,10 @@ jobs:
           files: target/release/wattray.exe
           generate_release_notes: true
       # Opens the PR to microsoft/winget-pkgs. Needs a classic PAT with public_repo in WINGET_TOKEN.
+      # ponytail: never fails the release. Until the first PR (#486738) is merged it fails on every tag
+      # ("does not exist in winget-pkgs"); after that, check this step's log if a version is missing in winget.
       - if: env.WINGET_TOKEN != ''
+        continue-on-error: true
         uses: vedantmgoyal9/winget-releaser@main
         with:
           identifier: facuga7van.wattray
