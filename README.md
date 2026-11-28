@@ -60,7 +60,7 @@ That's it. From now on it starts with Windows.
 | SteelSeries | Arctis Nova Pro, Nova 7, Nova 5, Nova 3P/3X, Arctis 7+, Arctis 7 / Pro, Arctis 1 / 7X / 7P, Arctis 9 | Arctis Nova Pro Wireless |
 | Corsair | Void family (Void, Void Pro, HS70...), Void Wireless V2, Virtuoso Max, HS80 Max, Virtuoso XT, Virtuoso SE | not yet |
 | HyperX | Cloud II Wireless, Cloud Alpha Wireless, Cloud Alpha 2 Wireless, Cloud Flight | not yet |
-| Razer | Wireless mice and keyboards using Razer's standard protocol | not yet |
+| Razer | Wireless mice and keyboards using Razer's standard protocol | Viper V3 Pro (HyperSpeed) |
 | Logitech G HUB | Anything G HUB shows a battery for, while G HUB is running (ASTRO headsets included) | not yet |
 | Standard HID battery | Any dongle or device that reports its battery the standard USB way (HID Battery Strength) | not yet |
 
