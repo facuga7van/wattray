@@ -64,6 +64,7 @@ That's it. From now on it starts with Windows.
 | Razer | Wireless mice and keyboards using Razer's standard protocol | Viper V3 Pro (HyperSpeed) |
 | CompX mice | Budget wireless mice on CompX receivers: Pulsar, VXE / ATK, LAMZU, VGN, Scyrox, Attack Shark R11, Redragon, Hitscan and more | not yet |
 | Glorious | Model O / O- / D / D- Wireless | not yet |
+| ASTRO A30 | Through its USB transmitter. The % comes from the battery updates the headset sends, so it shows after the first one (plugging or unplugging the charging cable sends one) | ASTRO A30 |
 | Logitech G HUB | Anything G HUB shows a battery for, while G HUB is running (including ASTRO A50 X and A50 Gen 5) | not yet |
 | Standard HID battery | Any dongle or device that reports its battery the standard USB way (HID Battery Strength) | not yet |
 

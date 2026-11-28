@@ -108,6 +108,7 @@ fn main() {
             }
             thread::park_timeout(wait); // unpark() = rescan now
         });
+        let _ = readers::RESCAN.set(worker.thread().clone());
         APP.with(|a| {
             *a.borrow_mut() = Some(App {
                 tray: Tray::new(hwnd),
