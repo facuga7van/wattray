@@ -15,9 +15,12 @@ static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new
 
 pub fn dump(tag: &str, b: &[u8]) {
     if DEBUG.load(Ordering::Relaxed) {
-        let hex: Vec<String> = b.iter().map(|x| format!("{x:02x}")).collect();
-        println!("  {:>5}ms {tag} {}", START.get_or_init(std::time::Instant::now).elapsed().as_millis(), hex.join(" "));
+        println!("  {:>5}ms {tag} {}", START.get_or_init(std::time::Instant::now).elapsed().as_millis(), hex(b));
     }
+}
+
+pub fn hex(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect::<Vec<_>>().join(" ")
 }
 
 #[derive(Debug)]

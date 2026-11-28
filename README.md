@@ -73,6 +73,7 @@ Run these from a terminal:
 ```
 wattray.exe --once     # print what it reads and exit
 wattray.exe --debug    # same, plus every HID report in hex and a list of all HID devices
+wattray.exe --listen VID:PID 60   # print everything one device sends for 60 s (read-only)
 ```
 
 If a device is missing or reads wrong, [open an issue](https://github.com/facuga7van/wattray/issues/new?template=device.yml) with the `--debug` output.

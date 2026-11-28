@@ -1,6 +1,7 @@
 #![windows_subsystem = "windows"]
 
 mod hid;
+mod listen;
 mod reading;
 mod readers;
 mod tray;
@@ -64,6 +65,11 @@ fn w(s: &str) -> Vec<u16> {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(k) = args.iter().position(|a| a == "--listen") {
+        console();
+        listen::run(args.get(k + 1).map(String::as_str), args.get(k + 2).map(String::as_str));
+        return;
+    }
     if args.iter().any(|a| a == "--once" || a == "--debug") {
         once(args.iter().any(|a| a == "--debug"));
         return;
@@ -118,14 +124,18 @@ fn main() {
     }
 }
 
-/// `--once` / `--debug`: print what every reader sees and exit.
-fn once(debug: bool) {
-    // `> file` already gave us a stdout: attaching to the console would replace it.
+/// Prints to the terminal that started us. `> file` already gave us a stdout: attaching would replace it.
+fn console() {
     unsafe {
         if GetStdHandle(STD_OUTPUT_HANDLE).is_null() {
             AttachConsole(ATTACH_PARENT_PROCESS);
         }
     }
+}
+
+/// `--once` / `--debug`: print what every reader sees and exit.
+fn once(debug: bool) {
+    console();
     hid::DEBUG.store(debug, Ordering::Relaxed);
     let all = readers::read_all();
     if all.is_empty() {
