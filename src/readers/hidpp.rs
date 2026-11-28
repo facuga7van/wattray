@@ -30,8 +30,13 @@ pub fn read(out: &mut Vec<Reading>) {
             None | Some(Some(Probe::Direct)) => (vec![0xFF], vec![]), // direct device
             Some(Some(Probe::Receiver(on, off))) => (on, off),
             Some(None) => {
-                // Receiver did not answer twice: keep whatever we showed for it, re-check next poll.
-                out.push(asleep_reading(format!("logi:{:04x}:*", info.pid)));
+                // Nothing answered twice. Some wired HID++ 2.0 devices (G715 by cable) ignore the 1.0
+                // request instead of rejecting it: try it as a direct device first. Otherwise it is a
+                // receiver that did not answer: keep whatever we showed for it, re-check next poll.
+                match read_device(&dev, info.pid, 0xFF) {
+                    Some(r) => out.push(r),
+                    None => out.push(asleep_reading(format!("logi:{:04x}:*", info.pid))),
+                }
                 continue;
             }
         };

@@ -1,6 +1,7 @@
 mod bt;
 mod corsair;
 mod generic;
+mod ghub;
 mod hidpp;
 mod hyperx;
 mod razer;
@@ -18,5 +19,6 @@ pub fn read_all() -> Vec<Reading> {
     razer::read(&mut out);
     bt::read(&mut out);
     generic::read(&mut out);
+    ghub::read(&mut out); // last: skips what HID++ already read
     out
 }

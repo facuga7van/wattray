@@ -141,15 +141,16 @@ pub struct Dev {
 impl Dev {
     pub fn open(info: &HidInfo) -> Option<Dev> {
         unsafe {
-            let h = CreateFileW(
-                info.path.as_ptr(),
-                GENERIC_READ | GENERIC_WRITE,
-                FILE_SHARE_READ | FILE_SHARE_WRITE,
-                null(),
-                OPEN_EXISTING,
-                FILE_FLAG_OVERLAPPED,
-                null_mut(),
-            );
+            let open = |access| {
+                CreateFileW(info.path.as_ptr(), access, FILE_SHARE_READ | FILE_SHARE_WRITE, null(), OPEN_EXISTING,
+                    FILE_FLAG_OVERLAPPED, null_mut())
+            };
+            let mut h = open(GENERIC_READ | GENERIC_WRITE);
+            if h == INVALID_HANDLE_VALUE {
+                // Mouse/keyboard collections are held by Windows: no read/write, but feature reports
+                // still work with access 0 (as hidapi does). Plain read/write then fail fast.
+                h = open(0);
+            }
             if h == INVALID_HANDLE_VALUE {
                 return None;
             }

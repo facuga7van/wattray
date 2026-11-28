@@ -61,6 +61,7 @@ That's it. From now on it starts with Windows.
 | Corsair | Void family (Void, Void Pro, HS70...), Void Wireless V2, Virtuoso Max, HS80 Max, Virtuoso XT, Virtuoso SE | not yet |
 | HyperX | Cloud II Wireless, Cloud Alpha Wireless, Cloud Alpha 2 Wireless, Cloud Flight | not yet |
 | Razer | Wireless mice and keyboards using Razer's standard protocol | not yet |
+| Logitech G HUB | Anything G HUB shows a battery for, while G HUB is running (ASTRO headsets included) | not yet |
 | Standard HID battery | Any dongle or device that reports its battery the standard USB way (HID Battery Strength) | not yet |
 
 "Not yet" means the protocol is ported but nobody has confirmed it on the real device: if you own one, the `--debug` output in an issue helps a lot. Other 2.4 GHz dongles use their maker's own protocol and need it added one by one. Protocol details come from [HeadsetControl](https://github.com/Sapd/HeadsetControl), [Solaar](https://github.com/pwr-Solaar/Solaar) and [OpenRazer](https://github.com/openrazer/openrazer).

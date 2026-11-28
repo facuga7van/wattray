@@ -1,6 +1,6 @@
 [package]
 name = "wattray"
-version = "0.5.1"
+version = "0.6.0"
 edition = "2024"
 description = "Battery % of your wireless peripherals in the Windows tray"
 license = "MIT"
