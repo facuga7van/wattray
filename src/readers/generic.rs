@@ -23,7 +23,9 @@ pub fn read(out: &mut Vec<Reading>) {
     let mut done: Vec<String> = Vec::new();
     for info in hid::enumerate_all() {
         let id = format!("hid:{:04x}:{:04x}", info.vid, info.pid);
-        if OWN_READER.contains(&info.vid) || done.contains(&id) || bluetooth(&info) {
+        // compx and sinowealth ids end in vid:pid: a device they already showed is not shown again
+        let tail = format!("{:04x}:{:04x}", info.vid, info.pid);
+        if OWN_READER.contains(&info.vid) || done.contains(&id) || out.iter().any(|o| o.id.ends_with(&tail)) || bluetooth(&info) {
             continue;
         }
         let Some(percent) = battery(&info) else { continue };

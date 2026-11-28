@@ -58,10 +58,13 @@ That's it. From now on it starts with Windows.
 | Bluetooth | Anything Windows shows a battery for in *Settings → Bluetooth* | Xbox Wireless Controller |
 | Logitech HID++ 2.0 | Logitech mice, keyboards and headsets on Lightspeed, Unifying or Bolt receivers, or plugged in | PRO X Superlight 2 (Lightspeed) |
 | SteelSeries | Arctis Nova Pro, Nova 7, Nova 5, Nova 3P/3X, Arctis 7+, Arctis 7 / Pro, Arctis 1 / 7X / 7P, Arctis 9 | Arctis Nova Pro Wireless |
-| Corsair | Void family (Void, Void Pro, HS70...), Void Wireless V2, Virtuoso Max, HS80 Max, Virtuoso XT, Virtuoso SE | not yet |
-| HyperX | Cloud II Wireless, Cloud Alpha Wireless, Cloud Alpha 2 Wireless, Cloud Flight | not yet |
+| SteelSeries mice | Aerox 3 / 5 / 9 Wireless, Prime Wireless, Prime Mini Wireless, Rival 3 Wireless (and Gen 2) | not yet |
+| Corsair | Void family (Void, Void Pro, HS70...), Void Wireless V2, Virtuoso Max, HS80 Max, Virtuoso XT, Virtuoso SE; Slipstream mice (Dark Core RGB Pro / SE, Harpoon, M65 Ultra) | not yet |
+| HyperX | Cloud II / III / III S Wireless, Cloud Alpha / Alpha 2 Wireless, Cloud Flight, Cloud Stinger 2 Wireless; Pulsefire Haste 2 Wireless, Saga Pro, Dart | not yet |
 | Razer | Wireless mice and keyboards using Razer's standard protocol | Viper V3 Pro (HyperSpeed) |
-| Logitech G HUB | Anything G HUB shows a battery for, while G HUB is running (ASTRO headsets included) | not yet |
+| CompX mice | Budget wireless mice on CompX receivers: Pulsar, VXE / ATK, LAMZU, VGN, Scyrox, Attack Shark R11, Redragon, Hitscan and more | not yet |
+| Glorious | Model O / O- / D / D- Wireless | not yet |
+| Logitech G HUB | Anything G HUB shows a battery for, while G HUB is running (including ASTRO A50 X and A50 Gen 5) | not yet |
 | Standard HID battery | Any dongle or device that reports its battery the standard USB way (HID Battery Strength) | not yet |
 
 "Not yet" means the protocol is ported but nobody has confirmed it on the real device: if you own one, the `--debug` output in an issue helps a lot. Other 2.4 GHz dongles use their maker's own protocol and need it added one by one. Protocol details come from [HeadsetControl](https://github.com/Sapd/HeadsetControl), [Solaar](https://github.com/pwr-Solaar/Solaar) and [OpenRazer](https://github.com/openrazer/openrazer).

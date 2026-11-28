@@ -1,11 +1,13 @@
 mod bt;
 mod centurion;
+mod compx;
 mod corsair;
 mod generic;
 mod ghub;
 mod hidpp;
 mod hyperx;
 mod razer;
+mod sinowealth;
 mod steelseries;
 
 use crate::reading::Reading;
@@ -19,6 +21,8 @@ pub fn read_all() -> Vec<Reading> {
     hidpp::read(&mut out);
     razer::read(&mut out);
     centurion::read(&mut out);
+    compx::read(&mut out);
+    sinowealth::read(&mut out);
     bt::read(&mut out);
     generic::read(&mut out);
     ghub::read(&mut out); // last: skips what HID++ already read
