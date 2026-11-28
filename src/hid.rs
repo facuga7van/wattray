@@ -133,6 +133,45 @@ unsafe fn probe(path: Vec<u16>, lower: &str) -> Option<HidInfo> {
     }
 }
 
+/// Report ids the interface declares for one report type (`[0]` when it uses none, empty if it has none).
+pub fn report_ids(info: &HidInfo, kind: HIDP_REPORT_TYPE) -> Vec<u8> {
+    let len = if kind == HidP_Input {
+        info.input_len
+    } else if kind == HidP_Output {
+        info.output_len
+    } else {
+        info.feature_len
+    };
+    let mut ids = Vec::new();
+    if len == 0 {
+        return ids;
+    }
+    unsafe {
+        let h = CreateFileW(info.path.as_ptr(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE, null(), OPEN_EXISTING, 0, null_mut());
+        if h == INVALID_HANDLE_VALUE {
+            return ids;
+        }
+        let mut pp = 0;
+        if HidD_GetPreparsedData(h, &mut pp) {
+            let mut values: Vec<HIDP_VALUE_CAPS> = vec![std::mem::zeroed(); 256];
+            let mut n = values.len() as u16;
+            if HidP_GetValueCaps(kind, values.as_mut_ptr(), &mut n, pp) == HIDP_STATUS_SUCCESS {
+                ids.extend(values[..n as usize].iter().map(|c| c.ReportID));
+            }
+            let mut buttons: Vec<HIDP_BUTTON_CAPS> = vec![std::mem::zeroed(); 256];
+            let mut n = buttons.len() as u16;
+            if HidP_GetButtonCaps(kind, buttons.as_mut_ptr(), &mut n, pp) == HIDP_STATUS_SUCCESS {
+                ids.extend(buttons[..n as usize].iter().map(|c| c.ReportID));
+            }
+            HidD_FreePreparsedData(pp);
+        }
+        CloseHandle(h);
+    }
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
 pub struct Dev {
     h: HANDLE,
     ev: HANDLE,

@@ -2,12 +2,9 @@
 //! Lists each HID interface with the report ids it declares, reads every declared feature report
 //! once (GET_REPORT, never SET), then prints every input report the device sends on its own.
 
-use std::ptr::{null, null_mut};
 use std::time::{Duration, Instant};
 
-use windows_sys::Win32::Devices::HumanInterfaceDevice::*;
-use windows_sys::Win32::Foundation::*;
-use windows_sys::Win32::Storage::FileSystem::*;
+use windows_sys::Win32::Devices::HumanInterfaceDevice::HidP_Feature;
 
 use crate::hid::{self, Dev, HidInfo};
 
@@ -25,7 +22,7 @@ pub fn run(target: Option<&str>, secs: Option<&str>) {
     println!("{vid:04x}:{pid:04x} {}", ifaces[0].product);
     for (n, i) in ifaces.iter().enumerate() {
         let mi = i.mi.map_or("--".into(), |m| format!("mi{m}"));
-        let ids = feature_ids(i);
+        let ids = hid::report_ids(i, HidP_Feature);
         println!("[{n}] {mi} {:04x}:{:04x} {}/{}/{} feature ids {ids:02x?}", i.usage_page, i.usage, i.input_len,
             i.output_len, i.feature_len);
         let Some(dev) = Dev::open(i) else { continue };
@@ -65,38 +62,6 @@ pub fn run(target: Option<&str>, secs: Option<&str>) {
 fn parse_target(s: &str) -> Option<(u16, u16)> {
     let (v, p) = s.split_once(':')?;
     Some((u16::from_str_radix(v, 16).ok()?, u16::from_str_radix(p, 16).ok()?))
-}
-
-/// Report ids the interface declares for feature reports (0 when it uses none).
-fn feature_ids(info: &HidInfo) -> Vec<u8> {
-    let mut ids = Vec::new();
-    if info.feature_len == 0 {
-        return ids;
-    }
-    unsafe {
-        let h = CreateFileW(info.path.as_ptr(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE, null(), OPEN_EXISTING, 0, null_mut());
-        if h == INVALID_HANDLE_VALUE {
-            return ids;
-        }
-        let mut pp = 0;
-        if HidD_GetPreparsedData(h, &mut pp) {
-            let mut values: Vec<HIDP_VALUE_CAPS> = vec![std::mem::zeroed(); 256];
-            let mut n = values.len() as u16;
-            if HidP_GetValueCaps(HidP_Feature, values.as_mut_ptr(), &mut n, pp) == HIDP_STATUS_SUCCESS {
-                ids.extend(values[..n as usize].iter().map(|c| c.ReportID));
-            }
-            let mut buttons: Vec<HIDP_BUTTON_CAPS> = vec![std::mem::zeroed(); 256];
-            let mut n = buttons.len() as u16;
-            if HidP_GetButtonCaps(HidP_Feature, buttons.as_mut_ptr(), &mut n, pp) == HIDP_STATUS_SUCCESS {
-                ids.extend(buttons[..n as usize].iter().map(|c| c.ReportID));
-            }
-            HidD_FreePreparsedData(pp);
-        }
-        CloseHandle(h);
-    }
-    ids.sort_unstable();
-    ids.dedup();
-    ids
 }
 
 #[cfg(test)]
