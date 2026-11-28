@@ -17,7 +17,7 @@ use windows_sys::core::{BOOL, GUID, HRESULT};
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED};
 use windows_sys::Win32::Globalization::GetUserDefaultUILanguage;
-use windows_sys::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
+use windows_sys::Win32::System::Console::{AttachConsole, GetStdHandle, ATTACH_PARENT_PROCESS, STD_OUTPUT_HANDLE};
 use windows_sys::Win32::System::LibraryLoader::{GetModuleFileNameW, GetModuleHandleW};
 use windows_sys::Win32::System::Registry::{RegDeleteKeyValueW, RegDeleteTreeW, RegSetKeyValueW, HKEY_CURRENT_USER, REG_SZ};
 use windows_sys::Win32::System::Threading::CreateMutexW;
@@ -120,7 +120,12 @@ fn main() {
 
 /// `--once` / `--debug`: print what every reader sees and exit.
 fn once(debug: bool) {
-    unsafe { AttachConsole(ATTACH_PARENT_PROCESS) };
+    // `> file` already gave us a stdout: attaching to the console would replace it.
+    unsafe {
+        if GetStdHandle(STD_OUTPUT_HANDLE).is_null() {
+            AttachConsole(ATTACH_PARENT_PROCESS);
+        }
+    }
     hid::DEBUG.store(debug, Ordering::Relaxed);
     let all = readers::read_all();
     if all.is_empty() {
