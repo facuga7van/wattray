@@ -16,16 +16,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  # Separate jobs, like GitHub's template: deploying in the same job right after the upload raced
+  # the artifact API ("No artifacts named github-pages") and failed until re-run.
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
       - id: deploy
         uses: actions/deploy-pages@v4
       # Tells IndexNow (Bing, Yandex...) the page changed. A failure does not fail the deploy.
